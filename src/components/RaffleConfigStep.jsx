@@ -11,7 +11,7 @@ import { CRITERIA_COPY } from '../constants/ruleHelpCopy';
 export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement }) {
   const {
     brand, setBrand, prizes, addPrize, removePrize, updatePrize,
-    entryMethod, setEntryMethod, weightedEntry,
+    entryMethod, setEntryMethod, weightedEntry, setWeightedEntry,
     keywordRequired, setKeywordRequired,
     keywordBlacklist, setKeywordBlacklist, userBlacklist, setUserBlacklist,
     showPrizeProductsInResultsStory, setShowPrizeProductsInResultsStory,

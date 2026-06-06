@@ -1,44 +1,44 @@
 // Instagram takip doğrulama orkestrasyonu
 
 const VERIFY_STORAGE_KEY = 'raffle_follow_verify_progress';
+const PROFILE_READY_TIMEOUT_MS = 9000;
+const BETWEEN_PARTICIPANTS_MS = 350;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function waitForTabComplete(tabId, timeoutMs = 45000) {
+function waitForTabComplete(tabId, timeoutMs = 35000) {
   return new Promise((resolve, reject) => {
-    const started = Date.now();
+    let settled = false;
 
-    const check = (tab) => {
-      if (!tab || tab.id !== tabId) return;
-      if (tab.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        resolve(tab);
-      } else if (Date.now() - started > timeoutMs) {
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        reject(new Error('tab_load_timeout'));
-      }
-    };
+    function finish(fn, value) {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      clearTimeout(timeoutId);
+      fn(value);
+    }
 
     function onUpdated(updatedTabId, info, tab) {
       if (updatedTabId !== tabId) return;
       if (info.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        resolve(tab);
+        finish(resolve, tab);
       }
     }
+
+    const timeoutId = setTimeout(() => {
+      finish(reject, new Error('tab_load_timeout'));
+    }, timeoutMs);
 
     chrome.tabs.onUpdated.addListener(onUpdated);
     chrome.tabs.get(tabId, (tab) => {
       if (chrome.runtime.lastError) {
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        reject(chrome.runtime.lastError);
+        finish(reject, chrome.runtime.lastError);
         return;
       }
       if (tab.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        resolve(tab);
+        finish(resolve, tab);
       }
     });
   });
@@ -47,6 +47,7 @@ function waitForTabComplete(tabId, timeoutMs = 45000) {
 async function ensureContentScripts(tabId) {
   try {
     await chrome.tabs.sendMessage(tabId, { type: 'PING' });
+    return;
   } catch (_) {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -55,32 +56,55 @@ async function ensureContentScripts(tabId) {
   }
 }
 
-async function verifyParticipantOnTab(tabId, participant, requiredAccounts, minRequired) {
-  const url = `https://www.instagram.com/${encodeURIComponent(participant)}/`;
-  await chrome.tabs.update(tabId, { url });
-  await waitForTabComplete(tabId);
-  await sleep(2200);
-  await ensureContentScripts(tabId);
-
+function sendTabMessage(tabId, message) {
   return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, {
-      type: 'VERIFY_PARTICIPANT_FOLLOWS',
-      requiredFollowAccounts: requiredAccounts,
-      minRequiredFollows: minRequired,
-    }, (response) => {
+    chrome.tabs.sendMessage(tabId, message, (response) => {
       if (chrome.runtime.lastError || !response) {
-        resolve({
-          ok: false,
-          error: chrome.runtime.lastError?.message || 'verify_message_failed',
-          followed: [],
-          missing: requiredAccounts,
-          meetsRequirement: false,
-        });
+        resolve(null);
         return;
       }
       resolve(response);
     });
   });
+}
+
+async function waitForProfileReady(tabId, timeoutMs = PROFILE_READY_TIMEOUT_MS) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const response = await sendTabMessage(tabId, {
+      type: 'WAIT_PROFILE_READY',
+      timeoutMs: Math.max(800, timeoutMs - (Date.now() - started)),
+    });
+    if (response?.ready) return true;
+    await sleep(180);
+  }
+  return false;
+}
+
+async function verifyParticipantOnTab(tabId, participant, requiredAccounts, minRequired) {
+  const url = `https://www.instagram.com/${encodeURIComponent(participant)}/`;
+  await chrome.tabs.update(tabId, { url });
+  await waitForTabComplete(tabId);
+  await ensureContentScripts(tabId);
+  await waitForProfileReady(tabId);
+
+  const response = await sendTabMessage(tabId, {
+    type: 'VERIFY_PARTICIPANT_FOLLOWS',
+    requiredFollowAccounts: requiredAccounts,
+    minRequiredFollows: minRequired,
+  });
+
+  if (!response) {
+    return {
+      ok: false,
+      error: 'verify_message_failed',
+      followed: [],
+      missing: requiredAccounts,
+      meetsRequirement: false,
+    };
+  }
+
+  return response;
 }
 
 async function writeResultsToAppTab(appTabId, payload) {
@@ -109,7 +133,7 @@ async function runFollowVerification({ participants, requiredFollowAccounts, min
     const created = await chrome.tabs.create({ url: 'https://www.instagram.com/', active: false });
     verifyTabId = created.id;
     await waitForTabComplete(verifyTabId);
-    await sleep(1500);
+    await sleep(600);
 
     for (let i = 0; i < participants.length; i += 1) {
       const participant = participants[i];
@@ -130,7 +154,9 @@ async function runFollowVerification({ participants, requiredFollowAccounts, min
         minRequiredFollows
       );
 
-      await sleep(800);
+      if (i < participants.length - 1) {
+        await sleep(BETWEEN_PARTICIPANTS_MS);
+      }
     }
 
     const payload = {
@@ -175,7 +201,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
-// Popup ile content script arasında oturum yönetimi.
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'raffle-popup') return;
 

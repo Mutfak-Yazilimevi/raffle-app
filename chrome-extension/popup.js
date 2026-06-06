@@ -73,8 +73,73 @@ function readAppLocalStorage(tabId, keys) {
 }
 
 async function findAppTab() {
+  const urlPatterns = [
+    '*://mutfak-yazilimevi.github.io/raffle-app/*',
+    '*://*.github.io/raffle-app/*',
+    'http://localhost/*',
+    'http://127.0.0.1/*',
+  ];
+
+  for (const url of urlPatterns) {
+    try {
+      const tabs = await chrome.tabs.query({ url });
+      if (tabs.length > 0) return tabs[0];
+    } catch (_) {
+      // host permission olmayabilir; fallback aşağıda
+    }
+  }
+
   const tabs = await chrome.tabs.query({});
   return tabs.find((tab) => isAppUrl(tab.url)) || null;
+}
+
+function writeCommentsToAppTab(tabId, commentsData) {
+  return new Promise((resolve, reject) => {
+    chrome.scripting.executeScript({
+      target: { tabId },
+      func: (data) => {
+        try {
+          localStorage.setItem('instagram_comments_import', JSON.stringify(data));
+          window.dispatchEvent(new StorageEvent('storage', {
+            key: 'instagram_comments_import',
+            newValue: JSON.stringify(data),
+          }));
+          return true;
+        } catch (e) {
+          console.error('Veri aktarılamadı:', e);
+          return false;
+        }
+      },
+      args: [commentsData],
+    }, (results) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+        return;
+      }
+      resolve(Boolean(results?.[0]?.result));
+    });
+  });
+}
+
+async function exportCommentsToApp(comments) {
+  let appTab = await findAppTab();
+
+  if (appTab) {
+    await writeCommentsToAppTab(appTab.id, comments);
+    chrome.tabs.update(appTab.id, { active: true });
+    return appTab.id;
+  }
+
+  return new Promise((resolve) => {
+    chrome.tabs.create({ url: DEFAULT_APP_URL }, (newTab) => {
+      const onUpdated = (tabId, info) => {
+        if (tabId !== newTab.id || info.status !== 'complete') return;
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        writeCommentsToAppTab(newTab.id, comments).then(() => resolve(newTab.id));
+      };
+      chrome.tabs.onUpdated.addListener(onUpdated);
+    });
+  });
 }
 
 async function setupFollowVerificationUI(elements) {
@@ -286,35 +351,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!response?.comments?.length) return;
 
         scrapedComments = response.comments;
+        btnExport.disabled = true;
+        btnExport.textContent = 'Aktarılıyor...';
 
-        const appTab = await findAppTab();
-
-        chrome.tabs.create({ url: DEFAULT_APP_URL }, (newTab) => {
-          chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-            if (tabId === newTab.id && info.status === 'complete') {
-              chrome.tabs.onUpdated.removeListener(listener);
-
-              chrome.scripting.executeScript({
-                target: { tabId: newTab.id },
-                func: (commentsData) => {
-                  try {
-                    localStorage.setItem('instagram_comments_import', JSON.stringify(commentsData));
-                    window.dispatchEvent(new StorageEvent('storage', {
-                      key: 'instagram_comments_import',
-                      newValue: JSON.stringify(commentsData),
-                    }));
-                  } catch (e) {
-                    console.error('Veri aktarılamadı:', e);
-                  }
-                },
-                args: [scrapedComments],
-              });
-            }
-          });
-        });
-
-        if (appTab) {
-          await readAppLocalStorage(appTab.id, ['raffle_follow_verify_request']);
+        try {
+          await exportCommentsToApp(scrapedComments);
+          btnExport.textContent = 'Aktarıldı ✓';
+        } catch (_) {
+          btnExport.textContent = 'Çekilişe Gönder 🚀';
+          btnExport.disabled = false;
         }
       });
     };

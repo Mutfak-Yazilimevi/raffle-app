@@ -8,44 +8,64 @@ function normalizeUsername(value) {
   return String(value || '').trim().replace(/^@+/, '').toLowerCase();
 }
 
+const SKIP_PATHS = new Set([
+  'explore', 'accounts', 'direct', 'reels', 'stories', 'p', 'reel', 'tags',
+  'locations', 'about', 'legal', 'following', 'followers', 'popular', 'tv',
+]);
+
+const FOLLOWS_YOU_LABELS = new Set([
+  'follows you',
+  'seni takip ediyor',
+  'sizi takip ediyor',
+]);
+
 function extractUsernameFromHref(href) {
   const match = (href || '').match(/^\/([^/?#]+)\/?$/);
   if (!match) return null;
   const name = match[1].toLowerCase();
-  const skip = new Set([
-    'explore', 'accounts', 'direct', 'reels', 'stories', 'p', 'reel', 'tags',
-    'locations', 'about', 'legal', 'following', 'followers', 'popular', 'tv',
-  ]);
-  if (skip.has(name)) return null;
+  if (SKIP_PATHS.has(name)) return null;
   return name;
 }
 
 function findScrollableElement(root) {
-  const candidates = root.querySelectorAll('div');
-  for (const el of candidates) {
+  const queue = [root];
+  while (queue.length) {
+    const el = queue.shift();
+    if (!(el instanceof HTMLElement)) continue;
+
     const style = window.getComputedStyle(el);
     const canScroll = style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay';
     if (canScroll && el.scrollHeight > el.clientHeight + 20) {
       return el;
     }
+
+    for (const child of el.children) {
+      queue.push(child);
+    }
   }
   return root;
 }
 
-function collectUsernamesFromRoot(root, foundSet) {
+function collectUsernamesFromRoot(root, foundSet, requiredSet) {
   for (const link of root.querySelectorAll('a[href^="/"]')) {
     const username = extractUsernameFromHref(link.getAttribute('href'));
-    if (username) foundSet.add(username);
+    if (!username) continue;
+    foundSet.add(username);
+    if (requiredSet && requiredSet.size > 0 && [...requiredSet].every((acc) => foundSet.has(acc))) {
+      return true;
+    }
   }
+  return false;
 }
 
 function pageHasFollowsYouIndicator() {
-  const text = (document.body?.innerText || '').toLowerCase();
-  return (
-    text.includes('follows you') ||
-    text.includes('seni takip ediyor') ||
-    text.includes('sizi takip ediyor')
-  );
+  const scope = document.querySelector('header, main section, [role="main"]') || document.body;
+  for (const el of scope.querySelectorAll('span, div, a')) {
+    const text = (el.textContent || '').trim().toLowerCase();
+    if (text.length > 40) continue;
+    if (FOLLOWS_YOU_LABELS.has(text)) return true;
+  }
+  return false;
 }
 
 function getLoggedInUsername() {
@@ -63,6 +83,15 @@ function getLoggedInUsername() {
   return null;
 }
 
+async function waitForProfileReady(timeoutMs = 8000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (document.querySelector('a[href$="/following/"]')) return true;
+    await sleep(120);
+  }
+  return false;
+}
+
 async function openFollowingDialog() {
   const link = document.querySelector('a[href$="/following/"]');
   if (!link) return null;
@@ -73,8 +102,8 @@ async function openFollowingDialog() {
     return null;
   }
 
-  for (let i = 0; i < 20; i += 1) {
-    await sleep(250);
+  for (let i = 0; i < 16; i += 1) {
+    await sleep(150);
     const dialog = document.querySelector('div[role="dialog"]');
     if (dialog) return dialog;
   }
@@ -93,25 +122,26 @@ async function scanFollowingDialog(requiredAccounts, minRequired) {
 
   const scrollEl = findScrollableElement(dialog);
   const found = new Set();
+  const requiredSet = new Set(requiredAccounts);
   let staleRounds = 0;
 
-  for (let round = 0; round < 50 && staleRounds < 6; round += 1) {
+  for (let round = 0; round < 32 && staleRounds < 4; round += 1) {
     const before = found.size;
-    collectUsernamesFromRoot(dialog, found);
+    if (collectUsernamesFromRoot(dialog, found, requiredSet)) break;
 
     const matchedCount = requiredAccounts.filter((acc) => found.has(acc)).length;
     if (matchedCount >= minRequired) break;
 
-    scrollEl.scrollTop += Math.max(300, scrollEl.clientHeight * 0.85);
-    await sleep(350);
-    collectUsernamesFromRoot(dialog, found);
+    scrollEl.scrollTop += Math.max(360, scrollEl.clientHeight * 0.9);
+    await sleep(220);
+    if (collectUsernamesFromRoot(dialog, found, requiredSet)) break;
 
     if (found.size === before) staleRounds += 1;
     else staleRounds = 0;
   }
 
   closeTopDialog();
-  await sleep(300);
+  await sleep(180);
 
   const followed = requiredAccounts.filter((acc) => found.has(acc));
   const missing = requiredAccounts.filter((acc) => !found.has(acc));
@@ -181,7 +211,9 @@ async function verifyParticipantFollowsRequired(requiredAccountsInput, minRequir
   };
 }
 
-// eslint-disable-next-line no-undef
 if (typeof window !== 'undefined') {
-  window.__raffleFollowVerify = { verifyParticipantFollowsRequired };
+  window.__raffleFollowVerify = {
+    verifyParticipantFollowsRequired,
+    waitForProfileReady,
+  };
 }

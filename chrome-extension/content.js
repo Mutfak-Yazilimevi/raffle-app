@@ -1,7 +1,7 @@
 // Instagram Çekiliş Yardımcısı - Content Script
 
 const SKIP_USERNAMES = new Set([
-  'explore', 'accounts', 'direct', 'reels', 'stories', 'p', 'reel', 'tags', 'locations', 'about', 'legal'
+  'explore', 'accounts', 'direct', 'reels', 'stories', 'p', 'reel', 'tags', 'locations', 'about', 'legal',
 ]);
 
 const NOISE_PATTERNS = [
@@ -13,7 +13,6 @@ const NOISE_PATTERNS = [
   /^Verified$/i,
 ];
 
-// Yalnızca yorum listesini genişleten metinler — geniş eşleşme YOK
 const EXPAND_ALL_PATTERNS = [
   /tüm\s*\d*\s*yorum/u,
   /view\s+all\s+\d*\s*comments?/i,
@@ -36,16 +35,28 @@ const BLOCKED_ARIA_FRAGMENTS = [
   'sil', 'delete', 'beğen', 'like', 'yanıtla', 'reply', 'emoji', 'ifade',
 ];
 
-let scrapingInterval = null;
+const SCRAPE_MIN_INTERVAL_MS = 100;
+const OBSERVER_DEBOUNCE_MS = 180;
+const NOTIFY_MIN_INTERVAL_MS = 300;
+const SCROLL_INTERVAL_MIN_MS = 550;
+const SCROLL_INTERVAL_MAX_MS = 1200;
+
+let scrapingActive = false;
+let scrapingTimer = null;
 let observer = null;
+let observerFlushTimer = null;
 let commentsMap = new Map();
 let commentUl = null;
 let scrollContainer = null;
+let loadMoreRoot = null;
 let lastNotifyTime = 0;
 let lastScrapeTime = 0;
+let lastParsedLiCount = 0;
 let scrollStepCount = 0;
 let lastCountAtClick = 0;
+let scrollIntervalMs = SCROLL_INTERVAL_MIN_MS;
 let clickedLoadMoreKeys = new Set();
+let menuDismissStep = 0;
 
 function isNoise(text) {
   return NOISE_PATTERNS.some((pattern) => pattern.test(text));
@@ -144,37 +155,57 @@ function refreshCommentTargets() {
   scrollContainer = commentUl
     ? findScrollContainer(commentUl) || findScrollContainer(commentUl.parentElement)
     : null;
+  loadMoreRoot = commentUl?.closest('article')
+    || document.querySelector('div[role="dialog"]')
+    || document.querySelector('main')
+    || document;
+  lastParsedLiCount = 0;
 }
 
-function scrapeVisibleComments() {
+function scrapeVisibleComments(forceFull = false) {
   const now = Date.now();
-  if (now - lastScrapeTime < 150) {
+  if (!forceFull && now - lastScrapeTime < SCRAPE_MIN_INTERVAL_MS) {
     return commentsMap.size;
   }
   lastScrapeTime = now;
 
-  if (!commentUl) refreshCommentTargets();
+  if (!commentUl || !commentUl.isConnected) refreshCommentTargets();
   if (!commentUl) return commentsMap.size;
 
-  for (const li of commentUl.querySelectorAll(':scope > li')) {
-    const parsed = parseCommentLi(li);
+  const items = commentUl.querySelectorAll(':scope > li');
+  const startIndex = forceFull
+    ? 0
+    : Math.max(0, Math.min(lastParsedLiCount, items.length) - 1);
+
+  for (let i = startIndex; i < items.length; i += 1) {
+    const parsed = parseCommentLi(items[i]);
     if (parsed) {
       commentsMap.set(`${parsed.username.toLowerCase()}:${parsed.text}`, parsed);
     }
   }
 
+  lastParsedLiCount = items.length;
   return commentsMap.size;
 }
 
 function notifyPopup(force = false) {
   const now = Date.now();
-  if (!force && now - lastNotifyTime < 350) return;
+  if (!force && now - lastNotifyTime < NOTIFY_MIN_INTERVAL_MS) return;
   lastNotifyTime = now;
 
   chrome.runtime.sendMessage({
     type: 'SCRAPE_UPDATE',
     count: commentsMap.size,
   }).catch(() => {});
+}
+
+function scheduleObserverScrape() {
+  if (observerFlushTimer) return;
+  observerFlushTimer = setTimeout(() => {
+    observerFlushTimer = null;
+    scrapeVisibleComments();
+    notifyPopup();
+  }, OBSERVER_DEBOUNCE_MS);
 }
 
 function isInsideCommentRow(el) {
@@ -213,6 +244,9 @@ function isSafeLoadMoreTarget(el) {
 }
 
 function dismissAccidentalMenus() {
+  menuDismissStep += 1;
+  if (menuDismissStep % 4 !== 1) return;
+
   const panels = document.querySelectorAll('[role="dialog"], [role="menu"]');
   for (const panel of panels) {
     const text = (panel.textContent || '').toLowerCase();
@@ -222,7 +256,6 @@ function dismissAccidentalMenus() {
 
     if (!isActionMenu) continue;
 
-    const cancelBtn = panel.querySelector('button, [role="button"]');
     const buttons = panel.querySelectorAll('button, [role="button"]');
     for (const btn of buttons) {
       const label = (btn.textContent || '').trim().toLowerCase();
@@ -239,9 +272,9 @@ function dismissAccidentalMenus() {
 function clickLoadMoreButtons() {
   dismissAccidentalMenus();
 
-  const root = document.querySelector('div[role="dialog"]') || document.querySelector('main') || document;
+  const root = loadMoreRoot || document.querySelector('main') || document;
 
-  for (const el of root.querySelectorAll('button, a')) {
+  for (const el of root.querySelectorAll('button, a[href="#"]')) {
     if (!isSafeLoadMoreTarget(el)) continue;
 
     const key = getElementLabel(el);
@@ -270,17 +303,17 @@ function clickLoadMoreButtons() {
 
 function autoScrollStep() {
   scrollStepCount += 1;
+  const countBefore = commentsMap.size;
 
-  // Tıklama yalnızca başlangıçta ve ilerleme durduğunda — her döngüde değil
-  if (scrollStepCount === 1 || (scrollStepCount % 10 === 0 && commentsMap.size === lastCountAtClick)) {
+  if (scrollStepCount === 1 || (scrollStepCount % 8 === 0 && commentsMap.size === lastCountAtClick)) {
     clickLoadMoreButtons();
     lastCountAtClick = commentsMap.size;
   }
 
-  if (!commentUl) refreshCommentTargets();
+  if (!commentUl || !commentUl.isConnected) refreshCommentTargets();
 
   if (scrollContainer) {
-    scrollContainer.scrollTop += Math.max(400, scrollContainer.clientHeight * 0.85);
+    scrollContainer.scrollTop += Math.max(450, scrollContainer.clientHeight * 0.9);
     if (scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight;
     }
@@ -288,9 +321,24 @@ function autoScrollStep() {
     commentUl.lastElementChild?.scrollIntoView({ block: 'end', behavior: 'instant' });
   }
 
-  const count = scrapeVisibleComments();
+  const count = scrapeVisibleComments(true);
   notifyPopup();
+
+  if (count === countBefore) {
+    scrollIntervalMs = Math.min(SCROLL_INTERVAL_MAX_MS, scrollIntervalMs + 80);
+  } else {
+    scrollIntervalMs = SCROLL_INTERVAL_MIN_MS;
+  }
+
   return count;
+}
+
+function scheduleNextScrollStep() {
+  if (!scrapingActive) return;
+  scrapingTimer = setTimeout(() => {
+    autoScrollStep();
+    scheduleNextScrollStep();
+  }, scrollIntervalMs);
 }
 
 function startObserver() {
@@ -298,14 +346,17 @@ function startObserver() {
   if (!commentUl) return;
 
   observer = new MutationObserver(() => {
-    scrapeVisibleComments();
-    notifyPopup();
+    scheduleObserverScrape();
   });
 
-  observer.observe(commentUl, { childList: true, subtree: true });
+  observer.observe(commentUl, { childList: true, subtree: false });
 }
 
 function stopObserver() {
+  if (observerFlushTimer) {
+    clearTimeout(observerFlushTimer);
+    observerFlushTimer = null;
+  }
   if (observer) {
     observer.disconnect();
     observer = null;
@@ -313,13 +364,14 @@ function stopObserver() {
 }
 
 function stopScraping() {
-  if (scrapingInterval) {
-    clearInterval(scrapingInterval);
-    scrapingInterval = null;
+  scrapingActive = false;
+  if (scrapingTimer) {
+    clearTimeout(scrapingTimer);
+    scrapingTimer = null;
   }
   stopObserver();
   dismissAccidentalMenus();
-  scrapeVisibleComments();
+  scrapeVisibleComments(true);
   return commentsMap.size;
 }
 
@@ -327,10 +379,14 @@ function resetState() {
   commentsMap = new Map();
   commentUl = null;
   scrollContainer = null;
+  loadMoreRoot = null;
   lastNotifyTime = 0;
   lastScrapeTime = 0;
+  lastParsedLiCount = 0;
   scrollStepCount = 0;
   lastCountAtClick = 0;
+  scrollIntervalMs = SCROLL_INTERVAL_MIN_MS;
+  menuDismissStep = 0;
   clickedLoadMoreKeys = new Set();
 }
 
@@ -344,29 +400,47 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.type === 'START_SCRAPING') {
-    if (scrapingInterval) clearInterval(scrapingInterval);
+  if (request.type === 'WAIT_PROFILE_READY') {
+    const waitFn = window.__raffleFollowVerify?.waitForProfileReady;
+    if (waitFn) {
+      waitFn(request.timeoutMs || 8000)
+        .then((ready) => sendResponse({ ready }))
+        .catch(() => sendResponse({ ready: false }));
+    } else {
+      sendResponse({ ready: Boolean(document.querySelector('a[href$="/following/"]')) });
+    }
+    return true;
+  }
 
+  if (request.type === 'START_SCRAPING') {
+    stopScraping();
     resetState();
     refreshCommentTargets();
     clickLoadMoreButtons();
-    scrapeVisibleComments();
+    scrapeVisibleComments(true);
     startObserver();
 
+    scrapingActive = true;
     autoScrollStep();
-    scrapingInterval = setInterval(autoScrollStep, 800);
+    scheduleNextScrollStep();
 
     sendResponse({ status: 'started', count: commentsMap.size });
   } else if (request.type === 'STOP_SCRAPING') {
     const count = stopScraping();
     sendResponse({ status: 'stopped', count });
-  } else   if (request.type === 'GET_COMMENTS') {
-    scrapeVisibleComments();
+  } else if (request.type === 'GET_COMMENTS') {
+    scrapeVisibleComments(true);
     sendResponse({ comments: getCommentsArray() });
   } else if (request.type === 'VERIFY_PARTICIPANT_FOLLOWS') {
     const verifyFn = window.__raffleFollowVerify?.verifyParticipantFollowsRequired;
     if (!verifyFn) {
-      sendResponse({ ok: false, error: 'follow_verify_unavailable', followed: [], missing: request.requiredFollowAccounts || [], meetsRequirement: false });
+      sendResponse({
+        ok: false,
+        error: 'follow_verify_unavailable',
+        followed: [],
+        missing: request.requiredFollowAccounts || [],
+        meetsRequirement: false,
+      });
     } else {
       verifyFn(request.requiredFollowAccounts, request.minRequiredFollows)
         .then(sendResponse)
