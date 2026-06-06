@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Award, Volume2, VolumeX, Sparkles, ChevronRight, RefreshCw, Trophy } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Award, Volume2, VolumeX, ChevronRight, RefreshCw, Trophy, Share2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { generateStartingStory } from '../utils/generateStartingStory';
 
 export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComplete }) {
   const activePrizes = prizes?.length > 0 ? prizes : [{ id: 1, name: 'Ödül', winnerCount: 1, substituteCount: 0 }];
@@ -22,6 +23,7 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
   const [animationNames, setAnimationNames] = useState([]);
   const [slotIndex, setSlotIndex] = useState(0);
   const [winnerTicket, setWinnerTicket] = useState(null);
+  const [generatingStartingStory, setGeneratingStartingStory] = useState(false);
 
   const slotListRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -215,6 +217,30 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
                     ((currentStep.type === 'asil' && currentStep.index === currentPrize.winnerCount && currentPrize.substituteCount === 0 && winnerTicket) ||
                     (currentStep.type === 'yedek' && currentStep.index === currentPrize.substituteCount && winnerTicket));
 
+  const uniqueParticipants = useMemo(
+    () => new Set(ticketsPool.map((t) => t.username.toLowerCase())).size,
+    [ticketsPool]
+  );
+
+  const handleGenerateStartingStory = async () => {
+    setGeneratingStartingStory(true);
+    try {
+      await generateStartingStory(
+        { brand, prizes: activePrizes },
+        {
+          participantCount: uniqueParticipants,
+          ticketCount: ticketsPool.length,
+          prizeCount: activePrizes.length,
+        }
+      );
+    } catch (err) {
+      console.error(err);
+      alert('Story görseli oluşturulurken bir hata oluştu.');
+    } finally {
+      setGeneratingStartingStory(false);
+    }
+  };
+
   return (
     <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
       
@@ -237,14 +263,25 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
             {currentStep.type === 'asil' ? `${currentStep.index}. Asil Kazanan` : `${currentStep.index}. Yedek Kazanan`} Çekiliyor
           </h2>
         </div>
-        <button 
-          className="btn btn-secondary" 
-          style={{ padding: '8px 12px', borderRadius: '50px' }}
-          onClick={() => setSoundEnabled(!soundEnabled)}
-        >
-          {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} color="#ef4444" />}
-          <span style={{ fontSize: '12px' }}>{soundEnabled ? 'Ses Açık' : 'Sessiz'}</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ padding: '8px 12px', fontSize: '12px' }}
+            onClick={handleGenerateStartingStory}
+            disabled={generatingStartingStory}
+          >
+            <Share2 size={14} /> {generatingStartingStory ? '...' : 'Başlıyor Story'}
+          </button>
+          <button 
+            className="btn btn-secondary" 
+            style={{ padding: '8px 12px', borderRadius: '50px' }}
+            onClick={() => setSoundEnabled(!soundEnabled)}
+          >
+            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} color="#ef4444" />}
+            <span style={{ fontSize: '12px' }}>{soundEnabled ? 'Ses Açık' : 'Sessiz'}</span>
+          </button>
+        </div>
       </div>
 
       {/* ANA ÇARK / SLOT MACHINE EKRANI */}

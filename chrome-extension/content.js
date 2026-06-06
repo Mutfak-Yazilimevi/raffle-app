@@ -312,6 +312,17 @@ function stopObserver() {
   }
 }
 
+function stopScraping() {
+  if (scrapingInterval) {
+    clearInterval(scrapingInterval);
+    scrapingInterval = null;
+  }
+  stopObserver();
+  dismissAccidentalMenus();
+  scrapeVisibleComments();
+  return commentsMap.size;
+}
+
 function resetState() {
   commentsMap = new Map();
   commentUl = null;
@@ -347,14 +358,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     sendResponse({ status: 'started', count: commentsMap.size });
   } else if (request.type === 'STOP_SCRAPING') {
-    if (scrapingInterval) {
-      clearInterval(scrapingInterval);
-      scrapingInterval = null;
-    }
-    stopObserver();
-    dismissAccidentalMenus();
-    scrapeVisibleComments();
-    sendResponse({ status: 'stopped', count: commentsMap.size });
+    const count = stopScraping();
+    sendResponse({ status: 'stopped', count });
   } else if (request.type === 'GET_COMMENTS') {
     scrapeVisibleComments();
     sendResponse({ comments: getCommentsArray() });

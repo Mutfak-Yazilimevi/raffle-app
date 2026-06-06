@@ -52,6 +52,7 @@ function toLightweightState(state) {
     brand: {
       name: state.brand?.name || '',
       raffleName: state.brand?.raffleName || '',
+      postUrl: state.brand?.postUrl || '',
     },
     prizes: (state.prizes || []).map(({ id, name, winnerCount, substituteCount }) => ({
       id,
@@ -101,7 +102,7 @@ export async function loadSetupState() {
       }
       trySetLocalStorage(SETUP_KEY, JSON.stringify(toLightweightState({
         ...parsed,
-        brand: { name: parsed.brand?.name || '', raffleName: parsed.brand?.raffleName || '', logo: '' },
+        brand: { name: parsed.brand?.name || '', raffleName: parsed.brand?.raffleName || '', postUrl: parsed.brand?.postUrl || '', logo: '' },
         prizes: (parsed.prizes || []).map(({ id, name, winnerCount, substituteCount }) => ({
           id, name, winnerCount, substituteCount,
         })),
@@ -122,6 +123,7 @@ export async function loadSetupState() {
       brand: {
         name: parsed.brand?.name || '',
         raffleName: parsed.brand?.raffleName || '',
+        postUrl: parsed.brand?.postUrl || '',
         logo: brandLogo,
       },
       prizes: prizes.length > 0

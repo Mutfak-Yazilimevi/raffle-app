@@ -7,6 +7,14 @@ export const LINKS = {
   app: 'https://mutfak-yazilimevi.github.io/raffle-app/',
 };
 
+/** Gönderi linki yoksa instagram.com, varsa geçerli URL döner. */
+export function resolveInstagramUrl(postUrl) {
+  const trimmed = (postUrl || '').trim();
+  if (!trimmed) return LINKS.instagram;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 function getPageDirectory() {
   const path = window.location.pathname;
   if (path.endsWith('/')) return path;

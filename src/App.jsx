@@ -1,109 +1,122 @@
 import React, { useState, useEffect } from 'react';
-import RaffleSetup from './components/RaffleSetup';
+import { Award, Compass, Puzzle } from 'lucide-react';
+import { LINKS } from './config';
+import { useRaffleForm } from './hooks/useRaffleForm';
+import RaffleConfigStep from './components/RaffleConfigStep';
+import RaffleCommentsStep from './components/RaffleCommentsStep';
 import RaffleAnimation from './components/RaffleAnimation';
 import RaffleResults from './components/RaffleResults';
-import { Award, Zap, Compass } from 'lucide-react';
+import ExtensionPage from './components/ExtensionPage';
+import StepProgress from './components/StepProgress';
 
 export default function App() {
-  const [stage, setStage] = useState('setup'); // setup, animation, results
+  const [page, setPage] = useState('raffle');
+  const [raffleStep, setRaffleStep] = useState('config');
+  const [drawStage, setDrawStage] = useState('animation');
   const [importedComments, setImportedComments] = useState([]);
-  
-  // Çekiliş verileri
+
   const [raffleConfig, setRaffleConfig] = useState({
     ticketsPool: [],
-    brand: { name: '', logo: '', raffleName: '' },
+    brand: { name: '', logo: '', raffleName: '', postUrl: '' },
     prizes: [],
-    rules: {}
+    rules: {},
   });
 
   const [results, setResults] = useState({
     winners: [],
-    substitutes: []
+    substitutes: [],
   });
 
-  // Eklentiden gelen veri dinleme mekanizması
-  useEffect(() => {
-    // Sayfa açıldığında eklentiden enjekte edilmiş yorum var mı kontrol et
-    const checkImportedData = () => {
-      const data = localStorage.getItem('instagram_comments_import');
-      if (data) {
-        try {
-          const comments = JSON.parse(data);
-          if (Array.isArray(comments) && comments.length > 0) {
-            setImportedComments(comments);
-          }
-        } catch (e) {
-          console.error('Eklenti verisi okunamadı:', e);
-        }
-      }
-    };
-
-    checkImportedData();
-
-    // Diğer sekmelerden/eklentiden gelen depolama değişimlerini dinle
-    const handleStorageChange = (e) => {
-      if (e.key === 'instagram_comments_import') {
-        checkImportedData();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  // Eklenti verisini temizleme
   const handleClearImported = () => {
     localStorage.removeItem('instagram_comments_import');
     setImportedComments([]);
   };
 
-  // Kurulum tamamlandığında
-  const handleSetupComplete = (config) => {
-    setRaffleConfig(config);
-    setStage('animation');
+  const form = useRaffleForm({ importedComments, onClearImported: handleClearImported });
+
+  useEffect(() => {
+    const checkImportedData = () => {
+      const data = localStorage.getItem('instagram_comments_import');
+      if (!data) return;
+      try {
+        const comments = JSON.parse(data);
+        if (Array.isArray(comments) && comments.length > 0) {
+          setImportedComments(comments);
+          if (page === 'raffle' && raffleStep === 'config') {
+            setRaffleStep('comments');
+          }
+        }
+      } catch (e) {
+        console.error('Eklenti verisi okunamadı:', e);
+      }
+    };
+
+    checkImportedData();
+
+    const handleStorageChange = (e) => {
+      if (e.key === 'instagram_comments_import') checkImportedData();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [page, raffleStep]);
+
+  const handleStartDraw = () => {
+    if (!form.validateStart()) return;
+    setRaffleConfig(form.buildSetupConfig());
+    setRaffleStep('draw');
+    setDrawStage('animation');
   };
 
-  // Çekiliş tamamlandığında
   const handleDrawComplete = (drawResults) => {
     setResults(drawResults);
-    setStage('results');
+    setDrawStage('results');
   };
 
-  // Çekilişi sıfırlama (Yeni çekilişe başlama)
   const handleReset = () => {
     setResults({ winners: [], substitutes: [] });
-    setStage('setup');
+    setRaffleStep('config');
+    setDrawStage('animation');
+    setPage('raffle');
   };
+
+  const currentProgressStep = raffleStep === 'draw' ? 'draw' : raffleStep;
+
+  const stageLabel = page === 'extension'
+    ? 'Chrome Eklentisi'
+    : raffleStep === 'config'
+      ? 'Kurallar'
+      : raffleStep === 'comments'
+        ? 'Yorumlar'
+        : drawStage === 'animation'
+          ? 'Canlı Çekiliş'
+          : 'Sonuçlar';
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      
-      {/* Premium Header */}
-      <header 
-        style={{ 
-          borderBottom: '1px solid var(--glass-border)', 
+      <header
+        style={{
+          borderBottom: '1px solid var(--glass-border)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           background: 'rgba(10, 10, 12, 0.6)',
           position: 'sticky',
           top: 0,
           zIndex: 100,
-          padding: '16px 24px'
+          padding: '16px 24px',
         }}
       >
-        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          
-          {/* Logo */}
+        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }} onClick={handleReset}>
-            <div 
-              style={{ 
-                background: 'var(--insta-gradient)', 
-                padding: '8px', 
-                borderRadius: '12px', 
-                display: 'flex', 
-                alignItems: 'center', 
+            <div
+              style={{
+                background: 'var(--insta-gradient)',
+                padding: '8px',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(225,48,108,0.2)' 
+                boxShadow: '0 4px 12px rgba(225,48,108,0.2)',
               }}
             >
               <Award size={22} color="white" />
@@ -118,42 +131,69 @@ export default function App() {
             </div>
           </div>
 
-          {/* Durum Göstergesi */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {page === 'raffle' && (
+            <StepProgress currentStep={currentProgressStep} />
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: 'rgba(255,255,255,0.03)', padding: '6px 12px', borderRadius: '50px', border: '1px solid var(--glass-border)' }}>
-              <Zap size={12} color="var(--insta-yellow)" />
               <span style={{ color: 'var(--text-muted)' }}>Aşama:</span>
-              <strong style={{ textTransform: 'capitalize', color: 'white' }}>
-                {stage === 'setup' ? 'Ayarlar' : stage === 'animation' ? 'Canlı Çekiliş' : 'Sonuçlar'}
-              </strong>
+              <strong style={{ color: 'white' }}>{stageLabel}</strong>
             </div>
-            
-            <a 
-              href="https://github.com/mutfak-yazilimevi/raffle-app" 
-              target="_blank" 
+
+            <button
+              type="button"
+              onClick={() => setPage(page === 'extension' ? 'raffle' : 'extension')}
+              style={{
+                fontSize: '12px',
+                color: page === 'extension' ? 'white' : 'var(--insta-blue)',
+                background: page === 'extension' ? 'rgba(64, 93, 230, 0.25)' : 'rgba(64, 93, 230, 0.08)',
+                border: '1px solid rgba(64, 93, 230, 0.35)',
+                borderRadius: '50px',
+                padding: '6px 14px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 600,
+              }}
+            >
+              <Puzzle size={14} /> Chrome Eklentisi
+            </button>
+
+            <a
+              href={LINKS.github}
+              target="_blank"
               rel="noopener noreferrer"
               style={{ fontSize: '12px', color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
             >
               <Compass size={14} /> GitHub
             </a>
           </div>
-
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main style={{ flexGrow: 1, display: 'flex', alignItems: 'center', padding: '30px 0' }}>
-        
-        {stage === 'setup' && (
-          <RaffleSetup 
-            onSetupComplete={handleSetupComplete} 
-            importedComments={importedComments}
-            onClearImported={handleClearImported}
+      <main style={{ flexGrow: 1, display: 'flex', alignItems: 'flex-start', padding: '30px 0', width: '100%' }}>
+        {page === 'extension' && (
+          <ExtensionPage onBack={() => setPage('raffle')} postUrl={form.brand.postUrl} />
+        )}
+
+        {page === 'raffle' && raffleStep === 'config' && (
+          <RaffleConfigStep form={form} onNext={() => setRaffleStep('comments')} />
+        )}
+
+        {page === 'raffle' && raffleStep === 'comments' && (
+          <RaffleCommentsStep
+            form={form}
+            importedCount={importedComments.length}
+            onBack={() => setRaffleStep('config')}
+            onStart={handleStartDraw}
+            onOpenExtension={() => setPage('extension')}
           />
         )}
 
-        {stage === 'animation' && (
-          <RaffleAnimation 
+        {page === 'raffle' && raffleStep === 'draw' && drawStage === 'animation' && (
+          <RaffleAnimation
             ticketsPool={raffleConfig.ticketsPool}
             brand={raffleConfig.brand}
             prizes={raffleConfig.prizes}
@@ -161,8 +201,8 @@ export default function App() {
           />
         )}
 
-        {stage === 'results' && (
-          <RaffleResults 
+        {page === 'raffle' && raffleStep === 'draw' && drawStage === 'results' && (
+          <RaffleResults
             winners={results.winners}
             substitutes={results.substitutes}
             brand={raffleConfig.brand}
@@ -170,14 +210,11 @@ export default function App() {
             onReset={handleReset}
           />
         )}
-
       </main>
 
-      {/* Footer */}
       <footer style={{ borderTop: '1px solid var(--glass-border)', padding: '20px 24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', background: 'rgba(0,0,0,0.2)' }}>
         <p>© 2026 Mutfak Yazılımevi - Instagram Çekiliş Stüdyosu. Tüm hakları saklıdır. Verileriniz tamamen yerel tarayıcınızda işlenir.</p>
       </footer>
-
     </div>
   );
 }
