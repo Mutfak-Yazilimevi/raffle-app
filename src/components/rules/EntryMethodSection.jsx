@@ -1,5 +1,5 @@
 import React from 'react';
-import { ENTRY_METHOD_HELP, ENTRY_METHOD_OPTIONS } from '../../constants/ruleHelpCopy';
+import { COMMENT_BASELINE, ENTRY_METHOD_HELP, ENTRY_METHOD_OPTIONS } from '../../constants/ruleHelpCopy';
 import {
   FormFieldHelp,
   RuleBaselineCard,
@@ -28,8 +28,7 @@ export default function EntryMethodSection({
   return (
     <>
       <RuleBaselineCard>
-        Çekilişe katılım yorum bırakarak yapılır. Yorumlar Chrome eklentisi ile içe aktarılır;
-        beğeni veya kaydetme bu temel şartın yerine geçmez.
+        {COMMENT_BASELINE}
       </RuleBaselineCard>
 
       <div className="form-group rule-entry-method">

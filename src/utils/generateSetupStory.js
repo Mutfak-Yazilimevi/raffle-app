@@ -22,6 +22,7 @@ export async function generateSetupStory(state) {
     userBlacklist: ruleFields.userBlacklist,
     requiredFollowAccounts: ruleFields.requiredFollowAccounts,
     requireFollowAccounts: ruleFields.requireFollowAccounts,
+    requireComment: ruleFields.requireComment,
     requireLike: ruleFields.requireLike,
     requireSave: ruleFields.requireSave,
     requireFollowAccounts: ruleFields.requireFollowAccounts,

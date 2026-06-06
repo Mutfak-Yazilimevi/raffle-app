@@ -35,6 +35,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
   const [followVerification, setFollowVerification] = useState({});
   const [followVerifyMessage, setFollowVerifyMessage] = useState('');
   const [followVerifyPending, setFollowVerifyPending] = useState(false);
+  const [requireComment, setRequireComment] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireComment);
   const [requireLike, setRequireLike] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireLike);
   const [requireSave, setRequireSave] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireSave);
   const [requireFollowAccounts, setRequireFollowAccounts] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireFollowAccounts);
@@ -75,12 +76,12 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
 
   const participationCriteria = useMemo(
     () => parseParticipationCriteria({
-      requireLike, requireSave, requireFollowAccounts, requireMentionRule,
+      requireComment, requireLike, requireSave, requireFollowAccounts, requireMentionRule,
       maxMentions, maxCommentsPerUser, allowMultipleCommentsBonus,
       requireStoryShare, requireStoryProofIfPrivate, requireMinAge, minAge,
       requireRealActiveAccount, disallowBusinessAccounts,
     }),
-    [requireLike, requireSave, requireFollowAccounts, requireMentionRule, maxMentions, maxCommentsPerUser, allowMultipleCommentsBonus,
+    [requireComment, requireLike, requireSave, requireFollowAccounts, requireMentionRule, maxMentions, maxCommentsPerUser, allowMultipleCommentsBonus,
       requireStoryShare, requireStoryProofIfPrivate, requireMinAge, minAge,
       requireRealActiveAccount, disallowBusinessAccounts]
   );
@@ -109,6 +110,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
 
   const applyParticipationCriteria = (config) => {
     const c = parseParticipationCriteria(config);
+    setRequireComment(c.requireComment);
     setRequireLike(c.requireLike);
     setRequireSave(c.requireSave);
     setRequireFollowAccounts(c.requireFollowAccounts);
@@ -588,6 +590,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     followAccountList, followRuleActive, effectiveMinRequiredFollows,
     followVerification, followVerifyMessage, followVerifyPending,
     handlePrepareFollowVerification, getFollowStatusForUser,
+    requireComment, setRequireComment,
     requireLike, setRequireLike, requireSave, setRequireSave,
     maxMentions, setMaxMentions, maxCommentsPerUser, setMaxCommentsPerUser,
     allowMultipleCommentsBonus, setAllowMultipleCommentsBonus,

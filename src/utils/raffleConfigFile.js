@@ -104,16 +104,21 @@ function entryMethodLabel(method) {
 }
 
 export function getRulesSummaryLines(rules) {
-  const lines = [`Katılım: ${entryMethodLabel(rules.entryMethod)}`];
+  const c = parseParticipationCriteria(rules);
+  const lines = [];
 
-  if (rules.requireMentionRule && rules.minMentions > 0) {
-    lines.push(`En az ${rules.minMentions} etiket (${rules.mentionMode === 'cumulative' ? 'toplam' : 'yorum başı'})`);
+  if (c.requireComment) {
+    lines.push(`Katılım: ${entryMethodLabel(rules.entryMethod)}`);
+
+    if (rules.requireMentionRule && rules.minMentions > 0) {
+      lines.push(`En az ${rules.minMentions} etiket (${rules.mentionMode === 'cumulative' ? 'toplam' : 'yorum başı'})`);
+    }
+    if (rules.requireMentionRule && rules.weightedEntry) lines.push('Ağırlıklı hak aktif');
+    if (rules.requireMentionRule && rules.uniqueMentions) lines.push('Benzersiz etiket zorunlu');
+    if (rules.keywordRequired?.trim()) lines.push(`Zorunlu: ${rules.keywordRequired.trim()}`);
+    if (rules.keywordBlacklist?.trim()) lines.push('Yasaklı kelime filtresi var');
+    if (rules.userBlacklist?.trim()) lines.push('Engelli kullanıcı listesi var');
   }
-  if (rules.requireMentionRule && rules.weightedEntry) lines.push('Ağırlıklı hak aktif');
-  if (rules.requireMentionRule && rules.uniqueMentions) lines.push('Benzersiz etiket zorunlu');
-  if (rules.keywordRequired?.trim()) lines.push(`Zorunlu: ${rules.keywordRequired.trim()}`);
-  if (rules.keywordBlacklist?.trim()) lines.push(`Yasaklı kelime filtresi var`);
-  if (rules.userBlacklist?.trim()) lines.push(`Engelli kullanıcı listesi var`);
 
   const followLine = getFollowRuleSummary(rules.requiredFollowAccounts, rules.requireFollowAccounts);
   if (followLine) lines.push(followLine);

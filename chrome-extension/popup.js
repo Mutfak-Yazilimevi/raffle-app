@@ -302,19 +302,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnVerifyFollows,
   });
 
+  function applyScrapeUiState({ count, phase }) {
+    commentCountEl.textContent = count;
+    progressBar.style.width = `${Math.min(20 + count * 2, 100)}%`;
+
+    if (phase === 'ready' && count > 0) {
+      isScraping = false;
+      btnStop.style.display = 'none';
+      btnStart.style.display = 'flex';
+      btnStart.textContent = 'Yorumları Çekmeye Devam Et';
+      btnExport.disabled = false;
+      scrollStatusEl.textContent = `${count} yorum hazır — Çekilişe Gönder'e basın`;
+      scrollStatusEl.className = 'status-value success';
+      progressBar.style.width = '100%';
+      notifyScrapingStopped();
+      return;
+    }
+
+    if (count > 0) {
+      clearZeroCommentHintTimer();
+      btnExport.disabled = isScraping;
+      if (phase === 'stalled') {
+        scrollStatusEl.textContent = `${count} yorum · daha fazlası deneniyor…`;
+      } else if (isScraping) {
+        scrollStatusEl.textContent = `${count} yorum · tarama sürüyor…`;
+      } else {
+        scrollStatusEl.textContent = `${count} yorum çekildi`;
+      }
+      scrollStatusEl.className = 'status-value success';
+    } else if (isScraping) {
+      scrollStatusEl.textContent = 'Yorum paneli açılıyor...';
+      scrollStatusEl.className = 'status-value';
+    }
+  }
+
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'SCRAPE_UPDATE') {
-      commentCountEl.textContent = message.count;
-      progressBar.style.width = `${Math.min(20 + message.count * 2, 100)}%`;
-      if (message.count > 0) {
-        clearZeroCommentHintTimer();
-        btnExport.disabled = false;
-        scrollStatusEl.textContent = `${message.count} yorum çekildi...`;
-        scrollStatusEl.className = 'status-value success';
-      } else if (isScraping) {
-        scrollStatusEl.textContent = 'Yorum paneli açılıyor...';
-        scrollStatusEl.className = 'status-value';
-      }
+      applyScrapeUiState({
+        count: message.count,
+        phase: message.phase,
+      });
     }
 
     if (message.type === 'FOLLOW_VERIFY_PROGRESS' && followVerifyStatus) {

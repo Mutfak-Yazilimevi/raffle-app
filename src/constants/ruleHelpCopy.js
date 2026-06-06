@@ -1,8 +1,8 @@
 export const COMMENT_BASELINE =
-  'Çekilişe katılım yorum bırakarak yapılır. Yorumlar Chrome eklentisi ile içe aktarılır; bu tek temel etkileşimdir.';
+  'Katılımcı listesi Chrome eklentisi ile içe aktarılır. Gönderi etkileşimlerinden hangilerinin zorunlu sayılacağını aşağıdan seçin.';
 
 export const COMMENT_RULES_INTRO =
-  'Yorum metninden otomatik uygulanır. Şartı sağlamayan yorumlar çekiliş havuzuna alınmaz.';
+  'Yorum zorunluysa metinden otomatik uygulanır. Şartı sağlamayan yorumlar çekiliş havuzuna alınmaz.';
 
 export const FILTER_INTRO = COMMENT_RULES_INTRO;
 
@@ -10,6 +10,12 @@ export const ENTRY_METHOD_HELP =
   'Yorumlar içe aktarıldığında çekiliş havuzuna kaç bilet düşeceğini belirler.';
 
 export const CRITERIA_COPY = {
+  requireComment: {
+    label: 'Yorum yapmak',
+    description: 'Katılımcının çekiliş gönderisine yorum bırakması beklenir.',
+    whenEnabled:
+      'Duyuru ve story kurallarına eklenir. Yorum metni kuralları (kelime, etiket vb.) uygulanır; kazanan adayında «Yorum yaptı» maddesi çıkar.',
+  },
   requireLike: {
     label: 'Gönderiyi beğenmek',
     description: 'Katılımcının çekiliş gönderisini beğenmesi beklenir.',
@@ -94,7 +100,7 @@ export const SECTION_COPY = {
   },
   postInteraction: {
     title: 'Gönderi Etkileşimi',
-    intro: 'Beğeni ve kaydetme gönderi üzerinde yapılır; yorum metninden okunamaz. Kazanan adayında manuel kontrol edilir.',
+    intro: 'Beğeni, kaydetme ve yorum gönderi üzerinde yapılır. İstediğiniz etkileşimleri işaretleyin; işaretlenmeyenler duyuruda zorunlu şart olarak yer almaz.',
     badge: 'manual',
   },
   account: {

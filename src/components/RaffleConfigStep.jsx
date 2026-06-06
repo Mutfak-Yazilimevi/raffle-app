@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import StoryBackgroundPicker from './StoryBackgroundPicker';
 import ParticipationCriteriaSection from './ParticipationCriteriaSection';
-import { CriteriaCheckbox, CommentRulesSection, EntryMethodSection, FormFieldHelp } from './rules';
+import { CriteriaCheckbox, CommentRulesSection, EntryMethodSection, FormFieldHelp, PostInteractionSection } from './rules';
 import { CRITERIA_COPY } from '../constants/ruleHelpCopy';
 
 export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, onRaffleSaved }) {
@@ -17,6 +17,7 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
     handleImageUpload, storageWarning, configMessage, savingRaffle,
     handleSaveRaffle, generatingSetupStory, handleExportConfigTxt, handleImportConfigTxt,
     handleGenerateSetupStory, configFileInputRef,
+    requireComment,
   } = form;
 
   const handleSaveClick = async () => {
@@ -150,16 +151,32 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
           <ListFilter className="gradient-text" size={20} /> Kurallar ve Filtreler
         </h3>
 
-        <EntryMethodSection
-          entryMethod={entryMethod}
-          setEntryMethod={setEntryMethod}
-          weightedEntry={weightedEntry}
-          setWeightedEntry={setWeightedEntry}
-        />
+        <PostInteractionSection form={form} />
 
         <div className="rule-section-divider" />
 
-        <CommentRulesSection form={form} />
+        {requireComment ? (
+          <>
+            <EntryMethodSection
+              entryMethod={entryMethod}
+              setEntryMethod={setEntryMethod}
+              weightedEntry={weightedEntry}
+              setWeightedEntry={setWeightedEntry}
+            />
+
+            <div className="rule-section-divider" />
+
+            <CommentRulesSection form={form} />
+          </>
+        ) : (
+          <div className="rule-nested-panel" style={{ marginBottom: '16px' }}>
+            <FormFieldHelp whenActive="Katılımcı listesi yine Chrome eklentisi ile oluşturulur; yorum zorunluluğu duyuruda yer almaz.">
+              Yorum şartı kapalıyken yorum metni kuralları ve katılım hak tipi ayarlanmaz.
+            </FormFieldHelp>
+          </div>
+        )}
+
+        <div className="rule-section-divider" />
 
         <ParticipationCriteriaSection form={form} />
 

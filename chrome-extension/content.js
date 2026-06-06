@@ -51,6 +51,8 @@ const OBSERVER_DEBOUNCE_MS = 180;
 const NOTIFY_MIN_INTERVAL_MS = 300;
 const SCROLL_INTERVAL_MIN_MS = 550;
 const SCROLL_INTERVAL_MAX_MS = 1200;
+const STALL_STEP_THRESHOLD = 5;
+const AUTO_FINISH_STEP_THRESHOLD = 14;
 
 let scrapingActive = false;
 let scrapingTimer = null;
@@ -69,6 +71,7 @@ let lastCountAtClick = 0;
 let scrollIntervalMs = SCROLL_INTERVAL_MIN_MS;
 let clickedLoadMoreKeys = new Set();
 let menuDismissStep = 0;
+let unchangedStepCount = 0;
 
 window.addEventListener('message', (event) => {
   if (event.source !== window || event.data?.type !== 'RAFFLE_IG_NETWORK') return;
@@ -346,10 +349,22 @@ function notifyPopup(force = false) {
   if (!force && now - lastNotifyTime < NOTIFY_MIN_INTERVAL_MS) return;
   lastNotifyTime = now;
 
+  let phase = 'loading';
+  if (!scrapingActive) {
+    phase = 'ready';
+  } else if (commentsMap.size > 0 && unchangedStepCount >= AUTO_FINISH_STEP_THRESHOLD) {
+    phase = 'ready';
+  } else if (commentsMap.size > 0 && unchangedStepCount >= STALL_STEP_THRESHOLD) {
+    phase = 'stalled';
+  } else if (commentsMap.size > 0) {
+    phase = 'scraping';
+  }
+
   chrome.runtime.sendMessage({
     type: 'SCRAPE_UPDATE',
     count: commentsMap.size,
-    phase: commentsMap.size > 0 ? 'scraping' : 'loading',
+    phase,
+    unchangedSteps: unchangedStepCount,
   }).catch(() => {});
 }
 
@@ -360,6 +375,57 @@ function scheduleObserverScrape() {
     scrapeVisibleComments();
     notifyPopup();
   }, OBSERVER_DEBOUNCE_MS);
+}
+
+function findScrollContainersInRoot(root) {
+  const containers = [];
+  const walk = (element) => {
+    if (!(element instanceof Element)) return;
+    const style = window.getComputedStyle(element);
+    const canScroll =
+      style.overflowY === 'auto'
+      || style.overflowY === 'scroll'
+      || style.overflowY === 'overlay';
+
+    if (canScroll && element.scrollHeight > element.clientHeight + 20) {
+      containers.push(element);
+    }
+    for (const child of element.children) walk(child);
+  };
+  walk(root);
+  return containers;
+}
+
+function scrollCommentArea() {
+  const root = getScrapeRoot();
+  const targets = [];
+
+  if (scrollContainer?.isConnected) targets.push(scrollContainer);
+  for (const container of findScrollContainersInRoot(root)) {
+    if (!targets.includes(container)) targets.push(container);
+  }
+
+  if (targets.length === 0 && commentUl) {
+    commentUl.lastElementChild?.scrollIntoView({ block: 'end', behavior: 'instant' });
+    return;
+  }
+
+  for (const container of targets.slice(0, 4)) {
+    container.scrollTop += Math.max(450, container.clientHeight * 0.9);
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }
+}
+
+function clearLoadMoreClickCache() {
+  const next = new Set();
+  for (const key of clickedLoadMoreKeys) {
+    if (key.startsWith('open:') || key.startsWith('open-text:') || key.startsWith('open-svg:')) {
+      next.add(key);
+    }
+  }
+  clickedLoadMoreKeys = next;
 }
 
 function isInsideCommentRow(el) {
@@ -514,8 +580,12 @@ function clickOpenCommentsPanel() {
   return false;
 }
 
-function clickLoadMoreButtons() {
+function clickLoadMoreButtons(forceRetry = false) {
   dismissAccidentalMenus();
+
+  if (forceRetry) {
+    clearLoadMoreClickCache();
+  }
 
   const root = loadMoreRoot || getScrapeRoot();
 
@@ -526,13 +596,33 @@ function clickLoadMoreButtons() {
 
   for (const svg of root.querySelectorAll('svg[aria-label]')) {
     const label = (svg.getAttribute('aria-label') || '').trim().toLowerCase();
-    if (!SVG_LOAD_LABELS.has(label)) continue;
+    const isLoadMore = SVG_LOAD_LABELS.has(label)
+      || /load\s+more/i.test(label)
+      || /daha\s+fazla/i.test(label);
+    if (!isLoadMore) continue;
     if (isInsideCommentRow(svg)) continue;
 
     const btn = svg.closest('button, [role="button"]');
     if (!btn || clickedLoadMoreKeys.has(label)) continue;
     clickTrackedTarget(btn, label);
   }
+
+  if (commentUl) {
+    for (const btn of commentUl.querySelectorAll('button, [role="button"]')) {
+      if (isInsideCommentRow(btn)) continue;
+      const label = getElementLabel(btn);
+      if (!label || hasBlockedAria(btn)) continue;
+      if (!matchesLoadMoreLabel(label) && !btn.querySelector('svg')) continue;
+      btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+      clickTrackedTarget(btn, `list:${label}`);
+    }
+  }
+}
+
+function finishScrapingAsReady() {
+  const count = stopScraping();
+  notifyPopup(true);
+  return count;
 }
 
 function autoScrollStep() {
@@ -544,30 +634,30 @@ function autoScrollStep() {
     refreshCommentTargets();
   }
 
-  if (scrollStepCount === 1 || (scrollStepCount % 8 === 0 && commentsMap.size === lastCountAtClick)) {
-    clickLoadMoreButtons();
+  if (scrollStepCount === 1 || unchangedStepCount >= 2 || (scrollStepCount % 6 === 0 && commentsMap.size === lastCountAtClick)) {
+    clickLoadMoreButtons(unchangedStepCount >= 3);
     lastCountAtClick = commentsMap.size;
   }
 
   if (!commentUl || !commentUl.isConnected) refreshCommentTargets();
   ensureObserver();
-
-  if (scrollContainer) {
-    scrollContainer.scrollTop += Math.max(450, scrollContainer.clientHeight * 0.9);
-    if (scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10) {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight;
-    }
-  } else if (commentUl) {
-    commentUl.lastElementChild?.scrollIntoView({ block: 'end', behavior: 'instant' });
-  }
+  scrollCommentArea();
 
   const count = scrapeVisibleComments(true);
-  notifyPopup();
 
   if (count === countBefore) {
+    unchangedStepCount += 1;
     scrollIntervalMs = Math.min(SCROLL_INTERVAL_MAX_MS, scrollIntervalMs + 80);
   } else {
+    unchangedStepCount = 0;
     scrollIntervalMs = SCROLL_INTERVAL_MIN_MS;
+  }
+
+  notifyPopup();
+
+  if (unchangedStepCount >= AUTO_FINISH_STEP_THRESHOLD) {
+    finishScrapingAsReady();
+    return count;
   }
 
   return count;
@@ -640,6 +730,7 @@ function resetState() {
   lastCountAtClick = 0;
   scrollIntervalMs = SCROLL_INTERVAL_MIN_MS;
   menuDismissStep = 0;
+  unchangedStepCount = 0;
   clickedLoadMoreKeys = new Set();
 }
 

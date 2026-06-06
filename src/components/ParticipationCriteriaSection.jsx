@@ -23,8 +23,7 @@ function CriteriaFromCopy({ id, checked, onChange }) {
 
 export default function ParticipationCriteriaSection({ form }) {
   const {
-    requireLike, setRequireLike,
-    requireSave, setRequireSave,
+    requireComment,
     requireFollowAccounts, setRequireFollowAccounts,
     requiredFollowAccounts, setRequiredFollowAccounts,
     followAccountList,
@@ -39,20 +38,10 @@ export default function ParticipationCriteriaSection({ form }) {
     disallowBusinessAccounts, setDisallowBusinessAccounts,
   } = form;
 
-  const postSection = SECTION_COPY.postInteraction;
   const accountSection = SECTION_COPY.account;
 
   return (
     <>
-      <RuleSection
-        badge={postSection.badge}
-        title={postSection.title}
-        intro={postSection.intro}
-      >
-        <CriteriaFromCopy id="requireLike" checked={requireLike} onChange={setRequireLike} />
-        <CriteriaFromCopy id="requireSave" checked={requireSave} onChange={setRequireSave} />
-      </RuleSection>
-
       <RuleSection
         badge={accountSection.badge}
         title={accountSection.title}
@@ -85,6 +74,7 @@ export default function ParticipationCriteriaSection({ form }) {
         )}
       </RuleSection>
 
+      {requireComment && (
       <RuleSection
         title={SECTION_COPY.multiEntry.title}
         intro={SECTION_COPY.multiEntry.intro}
@@ -114,6 +104,7 @@ export default function ParticipationCriteriaSection({ form }) {
           placeholder="0 = sınır yok"
         />
       </RuleSection>
+      )}
 
       <RuleSection
         badge={SECTION_COPY.story.badge}

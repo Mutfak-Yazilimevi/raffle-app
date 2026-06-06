@@ -1,6 +1,7 @@
 /** Opsiyonel katılım kriterleri — tümü isteğe bağlı */
 
 export const PARTICIPATION_CRITERIA_DEFAULTS = {
+  requireComment: true,
   requireLike: false,
   requireSave: false,
   requireFollowAccounts: false,
@@ -18,6 +19,7 @@ export const PARTICIPATION_CRITERIA_DEFAULTS = {
 
 export function parseParticipationCriteria(raw = {}) {
   return {
+    requireComment: raw.requireComment !== false,
     requireLike: Boolean(raw.requireLike),
     requireSave: Boolean(raw.requireSave),
     requireFollowAccounts: Boolean(raw.requireFollowAccounts),
@@ -39,10 +41,11 @@ export function getParticipationCriteriaSummaryLines(rules) {
   const lines = [];
 
   const interactions = [];
+  if (c.requireComment) interactions.push('yorum yapmak');
   if (c.requireLike) interactions.push('gönderiyi beğenmek');
   if (c.requireSave) interactions.push('gönderiyi kaydetmek');
   if (interactions.length) {
-    lines.push(`Temel etkileşim: ${interactions.join(', ')}`);
+    lines.push(`Katılım şartı: ${interactions.join(', ')}`);
   }
 
   if (c.requireMentionRule && c.maxMentions > 0 && rules.minMentions > 0) {
@@ -81,6 +84,9 @@ export function getWinnerVerificationChecklist(rules) {
   const c = parseParticipationCriteria(rules);
   const items = [];
 
+  if (c.requireComment) {
+    items.push({ id: 'comment', label: 'Yorum yaptı' });
+  }
   if (c.requireLike) {
     items.push({ id: 'like', label: 'Gönderiyi beğendi' });
   }
@@ -109,6 +115,7 @@ export function getWinnerVerificationChecklist(rules) {
 export function hasAnyParticipationCriteria(rules) {
   const c = parseParticipationCriteria(rules);
   return (
+    c.requireComment ||
     c.requireLike ||
     c.requireSave ||
     c.requireFollowAccounts ||
