@@ -11,8 +11,8 @@ export default function App() {
   // Çekiliş verileri
   const [raffleConfig, setRaffleConfig] = useState({
     ticketsPool: [],
-    winnerCount: 1,
-    substituteCount: 1,
+    brand: { name: '', logo: '', raffleName: '' },
+    prizes: [],
     rules: {}
   });
 
@@ -155,8 +155,8 @@ export default function App() {
         {stage === 'animation' && (
           <RaffleAnimation 
             ticketsPool={raffleConfig.ticketsPool}
-            winnerCount={raffleConfig.winnerCount}
-            substituteCount={raffleConfig.substituteCount}
+            brand={raffleConfig.brand}
+            prizes={raffleConfig.prizes}
             onDrawComplete={handleDrawComplete}
           />
         )}
@@ -165,6 +165,8 @@ export default function App() {
           <RaffleResults 
             winners={results.winners}
             substitutes={results.substitutes}
+            brand={raffleConfig.brand}
+            prizes={raffleConfig.prizes}
             onReset={handleReset}
           />
         )}

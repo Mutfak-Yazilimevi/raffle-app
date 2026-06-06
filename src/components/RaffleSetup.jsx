@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Users, ListFilter, Play, Info, Trash2, CheckCircle } from 'lucide-react';
+import { Settings, Upload, Users, ListFilter, Play, Info, Trash2, CheckCircle, Award, Image as ImageIcon } from 'lucide-react';
 
 const MOCK_COMMENTS_PRESET = [
   { username: 'ahmet_yılmaz', text: 'Harika bir çekiliş! Katılıyorum @merve_kaya @can_demir @elif_sahin' },
@@ -27,16 +27,10 @@ const MOCK_COMMENTS_PRESET = [
 export default function RaffleSetup({ onSetupComplete, importedComments, onClearImported }) {
   const [rawText, setRawText] = useState('');
   const [comments, setComments] = useState([]);
-  const [winnerCount, setWinnerCount] = useState(1);
-  const [substituteCount, setSubstituteCount] = useState(1);
-  const [entryMethod, setEntryMethod] = useState('one_per_user'); // one_per_user, one_per_comment
-  const [minMentions, setMinMentions] = useState(1);
-  const [mentionMode, setMentionMode] = useState('cumulative'); // per_comment, cumulative
-  const [weightedEntry, setWeightedEntry] = useState(false);
-  const [uniqueMentions, setUniqueMentions] = useState(true);
-  const [keywordRequired, setKeywordRequired] = useState('');
-  const [keywordBlacklist, setKeywordBlacklist] = useState('');
-  const [userBlacklist, setUserBlacklist] = useState('');
+  const [brand, setBrand] = useState({ name: '', logo: '', raffleName: '' });
+  const [prizes, setPrizes] = useState([
+    { id: Date.now(), name: '', image: '', winnerCount: 1, substituteCount: 1 }
+  ]);
 
   // Local storage'dan kayitli veriyi yukle
   useEffect(() => {
@@ -46,16 +40,8 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
         const parsed = JSON.parse(savedData);
         if (parsed.rawText) setRawText(parsed.rawText);
         if (parsed.comments) setComments(parsed.comments);
-        if (parsed.winnerCount) setWinnerCount(parsed.winnerCount);
-        if (parsed.substituteCount !== undefined) setSubstituteCount(parsed.substituteCount);
-        if (parsed.entryMethod) setEntryMethod(parsed.entryMethod);
-        if (parsed.minMentions !== undefined) setMinMentions(parsed.minMentions);
-        if (parsed.mentionMode) setMentionMode(parsed.mentionMode);
-        if (parsed.weightedEntry !== undefined) setWeightedEntry(parsed.weightedEntry);
-        if (parsed.uniqueMentions !== undefined) setUniqueMentions(parsed.uniqueMentions);
-        if (parsed.keywordRequired !== undefined) setKeywordRequired(parsed.keywordRequired);
-        if (parsed.keywordBlacklist !== undefined) setKeywordBlacklist(parsed.keywordBlacklist);
-        if (parsed.userBlacklist !== undefined) setUserBlacklist(parsed.userBlacklist);
+        if (parsed.brand) setBrand(parsed.brand);
+        if (parsed.prizes) setPrizes(parsed.prizes);
       } catch (e) {
         console.error('Error parsing local storage data', e);
       }
@@ -65,12 +51,35 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
   // Form degisikliklerini local storage'a kaydet
   useEffect(() => {
     const stateToSave = {
-      rawText, comments, winnerCount, substituteCount,
+      rawText, comments, brand, prizes,
       entryMethod, minMentions, mentionMode, weightedEntry,
       uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist
     };
     localStorage.setItem('raffle_setup_state', JSON.stringify(stateToSave));
-  }, [rawText, comments, winnerCount, substituteCount, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist]);
+  }, [rawText, comments, brand, prizes, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist]);
+
+  const handleImageUpload = (e, callback) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      callback(event.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const addPrize = () => {
+    setPrizes([...prizes, { id: Date.now(), name: '', image: '', winnerCount: 1, substituteCount: 1 }]);
+  };
+
+  const removePrize = (id) => {
+    if (prizes.length === 1) return;
+    setPrizes(prizes.filter(p => p.id !== id));
+  };
+
+  const updatePrize = (id, field, value) => {
+    setPrizes(prizes.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
 
   // Eklentiden gelen veriyi yükle
   useEffect(() => {
@@ -371,15 +380,16 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
       alert('Çekiliş havuzunda geçerli katılımcı bulunamadı. Lütfen yorum ekleyin veya kuralları gevşetin.');
       return;
     }
-    if (winnerCount < 1) {
-      alert('Asil kazanan sayısı en az 1 olmalıdır.');
+    const totalWinners = prizes.reduce((sum, p) => sum + parseInt(p.winnerCount || 0), 0);
+    if (totalWinners < 1) {
+      alert('Asil kazanan sayısı toplamda en az 1 olmalıdır.');
       return;
     }
     
     onSetupComplete({
       ticketsPool,
-      winnerCount,
-      substituteCount,
+      brand,
+      prizes,
       rules: {
         entryMethod,
         minMentions,
@@ -454,32 +464,78 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
 
         {/* ÇEKİLİŞ AYARLARI PANELDİ */}
         <div className="glass-container" style={{ padding: '24px' }}>
+          
+          {/* MARKA VE ÇEKİLİŞ BİLGİLERİ */}
           <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-            <Settings className="gradient-text" /> 2. Kuralları Belirle
+            <Settings className="gradient-text" /> 2. Marka ve Çekiliş Bilgileri (Opsiyonel)
           </h3>
-
+          <div className="form-group">
+            <label className="form-label">Çekiliş Adı</label>
+            <input type="text" className="form-input" placeholder="Örn: Yılbaşı Büyük Çekilişi" value={brand.raffleName} onChange={e => setBrand({...brand, raffleName: e.target.value})} />
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div className="form-group">
-              <label className="form-label">Asil Kazanan Sayısı</label>
-              <input
-                type="number"
-                min="1"
-                className="form-input"
-                value={winnerCount}
-                onChange={(e) => setWinnerCount(Math.max(1, parseInt(e.target.value) || 1))}
-              />
+              <label className="form-label">Marka Adı</label>
+              <input type="text" className="form-input" placeholder="Örn: Mutfak Yazılımevi" value={brand.name} onChange={e => setBrand({...brand, name: e.target.value})} />
             </div>
             <div className="form-group">
-              <label className="form-label">Yedek Kazanan Sayısı</label>
-              <input
-                type="number"
-                min="0"
-                className="form-input"
-                value={substituteCount}
-                onChange={(e) => setSubstituteCount(Math.max(0, parseInt(e.target.value) || 0))}
-              />
+              <label className="form-label">Marka Logosu</label>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '12px', cursor: 'pointer', color: 'var(--text-main)', fontSize: '14px' }}>
+                <Upload size={16} color="var(--insta-pink)" />
+                {brand.logo ? 'Logo Yüklendi' : 'Logo Yükle'}
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleImageUpload(e, (res) => setBrand({...brand, logo: res}))} />
+              </label>
             </div>
           </div>
+
+          <div style={{ borderTop: '1px solid var(--glass-border)', margin: '24px 0' }}></div>
+
+          <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Award className="gradient-text" /> 3. Ödüller</span>
+            <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', borderColor: 'var(--insta-orange)' }} onClick={addPrize}>+ Yeni Ödül Ekle</button>
+          </h3>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
+            {prizes.map((prize, idx) => (
+              <div key={prize.id} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '16px', position: 'relative' }}>
+                {prizes.length > 1 && (
+                  <button onClick={() => removePrize(prize.id)} style={{ position: 'absolute', top: '12px', right: '12px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
+                    <Trash2 size={16} />
+                  </button>
+                )}
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: 'var(--insta-yellow)' }}>{idx + 1}. Ödül</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '12px' }}>Ödül / Ürün Adı</label>
+                    <input type="text" className="form-input" style={{ padding: '8px 12px' }} placeholder="Örn: iPhone 15" value={prize.name} onChange={e => updatePrize(prize.id, 'name', e.target.value)} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '12px' }}>Ürün Resmi (Opsiyonel)</label>
+                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '8px 12px', cursor: 'pointer', fontSize: '13px' }}>
+                      <ImageIcon size={14} color="var(--insta-blue)" /> {prize.image ? 'Yüklendi' : 'Resim Seç'}
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleImageUpload(e, (res) => updatePrize(prize.id, 'image', res))} />
+                    </label>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '12px' }}>Asil Kazanan Sayısı</label>
+                    <input type="number" min="1" className="form-input" style={{ padding: '8px 12px' }} value={prize.winnerCount} onChange={e => updatePrize(prize.id, 'winnerCount', Math.max(1, parseInt(e.target.value)||1))} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '12px' }}>Yedek Kazanan Sayısı</label>
+                    <input type="number" min="0" className="form-input" style={{ padding: '8px 12px' }} value={prize.substituteCount} onChange={e => updatePrize(prize.id, 'substituteCount', Math.max(0, parseInt(e.target.value)||0))} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--glass-border)', margin: '16px 0', paddingTop: '16px' }}></div>
+
+          <h4 style={{ fontFamily: 'var(--font-title)', fontSize: '16px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ListFilter className="gradient-text" size={20} /> 4. Kurallar ve Filtreler
+          </h4>
 
           <div className="form-group">
             <label className="form-label">Katılım Hak Tipi</label>

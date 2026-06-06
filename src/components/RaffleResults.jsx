@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Trophy, ArrowRight, Download, Share2, RefreshCw, XCircle, Check, ExternalLink } from 'lucide-react';
 
-export default function RaffleResults({ winners: initialWinners, substitutes: initialSubstitutes, onReset }) {
+export default function RaffleResults({ winners: initialWinners, substitutes: initialSubstitutes, prizeName, onReset }) {
   const [winners, setWinners] = useState([...initialWinners]);
   const [substitutes, setSubstitutes] = useState([...initialSubstitutes]);
   const [verificationState, setVerificationState] = useState({}); // { username: { follow: bool, like: bool } }
@@ -163,12 +163,18 @@ export default function RaffleResults({ winners: initialWinners, substitutes: in
       ctx.textAlign = 'left';
       ctx.fillText(`${idx + 1}. @${winner.username}`, 190, currentY + 8);
 
-      // Yorum (kırpılmış)
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-      ctx.font = 'italic 24px Inter';
+      // Yorum veya Ödül
       ctx.textAlign = 'right';
-      const commentClean = winner.comment.length > 25 ? winner.comment.slice(0, 23) + '...' : winner.comment;
-      ctx.fillText(`"${commentClean}"`, 890, currentY + 8);
+      if (prizeName) {
+        ctx.fillStyle = '#fccc63';
+        ctx.font = 'bold 24px Inter';
+        ctx.fillText(`🎁 ${prizeName}`, 890, currentY + 8);
+      } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.font = 'italic 24px Inter';
+        const commentClean = winner.comment.length > 25 ? winner.comment.slice(0, 23) + '...' : winner.comment;
+        ctx.fillText(`"${commentClean}"`, 890, currentY + 8);
+      }
 
       currentY += 120;
     });
@@ -212,11 +218,17 @@ export default function RaffleResults({ winners: initialWinners, substitutes: in
       ctx.textAlign = 'left';
       ctx.fillText(`${idx + 1}. @${sub.username}`, 210, currentY + 8);
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
-      ctx.font = 'italic 22px Inter';
       ctx.textAlign = 'right';
-      const commentClean = sub.comment.length > 28 ? sub.comment.slice(0, 26) + '...' : sub.comment;
-      ctx.fillText(`"${commentClean}"`, 870, currentY + 8);
+      if (prizeName) {
+        ctx.fillStyle = 'rgba(252, 204, 99, 0.8)';
+        ctx.font = 'bold 22px Inter';
+        ctx.fillText(`🎁 ${prizeName}`, 870, currentY + 8);
+      } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+        ctx.font = 'italic 22px Inter';
+        const commentClean = sub.comment.length > 28 ? sub.comment.slice(0, 26) + '...' : sub.comment;
+        ctx.fillText(`"${commentClean}"`, 870, currentY + 8);
+      }
 
       currentY += 98;
     });
@@ -322,10 +334,16 @@ export default function RaffleResults({ winners: initialWinners, substitutes: in
                   </button>
                 </div>
 
-                {/* Yorum */}
-                <p style={{ fontStyle: 'italic', fontSize: '13px', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.3)', padding: '10px', borderRadius: '8px', border: '1px solid var(--glass-border)', margin: 0 }}>
-                  "{winner.comment}"
-                </p>
+                {/* Yorum / Ödül */}
+                {prizeName ? (
+                  <p style={{ fontStyle: 'italic', fontSize: '14px', color: 'var(--insta-yellow)', background: 'rgba(0,0,0,0.3)', padding: '10px', borderRadius: '8px', border: '1px solid var(--glass-border)', margin: 0, fontWeight: 600 }}>
+                    🎁 Kazandığı Ödül: {prizeName}
+                  </p>
+                ) : (
+                  <p style={{ fontStyle: 'italic', fontSize: '13px', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.3)', padding: '10px', borderRadius: '8px', border: '1px solid var(--glass-border)', margin: 0 }}>
+                    "{winner.comment}"
+                  </p>
+                )}
 
                 {/* Manuel Kontrol Listesi */}
                 <div style={{ display: 'flex', gap: '16px', borderTop: '1px solid var(--glass-border)', paddingTop: '10px', fontSize: '12px' }}>
@@ -392,9 +410,15 @@ export default function RaffleResults({ winners: initialWinners, substitutes: in
                     </div>
                   </div>
                   
-                  <p style={{ fontStyle: 'italic', fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
-                    "{sub.comment}"
-                  </p>
+                  {prizeName ? (
+                    <p style={{ fontStyle: 'italic', fontSize: '12px', color: 'var(--insta-yellow)', margin: 0, fontWeight: 600 }}>
+                      🎁 Ödül: {prizeName}
+                    </p>
+                  ) : (
+                    <p style={{ fontStyle: 'italic', fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
+                      "{sub.comment}"
+                    </p>
+                  )}
                 </div>
               ))
             )}

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Award, Volume2, VolumeX, Sparkles, ChevronRight, RefreshCw, Trophy } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCount, onDrawComplete }) {
+export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComplete }) {
+  const activePrizes = prizes?.length > 0 ? prizes : [{ id: 1, name: 'Ödül', winnerCount: 1, substituteCount: 0 }];
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [drawingPool, setDrawingPool] = useState([...ticketsPool]);
   const [drawnWinners, setDrawnWinners] = useState([]);
@@ -14,9 +15,9 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
   useEffect(() => { drawnWinnersRef.current = drawnWinners; }, [drawnWinners]);
   useEffect(() => { drawnSubstitutesRef.current = drawnSubstitutes; }, [drawnSubstitutes]);
   
-  // Çekiliş Aşaması Durumu
-  // currentStep: { type: 'asil' | 'yedek', index: number }
-  const [currentStep, setCurrentStep] = useState({ type: 'asil', index: 1 });
+  // currentStep: { prizeIndex: number, type: 'asil' | 'yedek', index: number }
+  const [currentStep, setCurrentStep] = useState({ prizeIndex: 0, type: 'asil', index: 1 });
+  const currentPrize = activePrizes[currentStep.prizeIndex] || activePrizes[0];
   const [isSpinning, setIsSpinning] = useState(false);
   const [animationNames, setAnimationNames] = useState([]);
   const [slotIndex, setSlotIndex] = useState(0);
@@ -164,9 +165,9 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
           const wonUser = chosenTicket.username.toLowerCase();
           
           if (currentStep.type === 'asil') {
-            setDrawnWinners(prev => [...prev, { ...chosenTicket, stepIndex: currentStep.index }]);
+            setDrawnWinners(prev => [...prev, { ...chosenTicket, prizeId: currentPrize.id, prizeName: currentPrize.name, stepIndex: currentStep.index }]);
           } else {
-            setDrawnSubstitutes(prev => [...prev, { ...chosenTicket, stepIndex: currentStep.index }]);
+            setDrawnSubstitutes(prev => [...prev, { ...chosenTicket, prizeId: currentPrize.id, prizeName: currentPrize.name, stepIndex: currentStep.index }]);
           }
 
           // Çekiliş havuzunu güncelle (kazananın diğer tüm biletlerini ele ki tekrar kazanmasın)
@@ -181,34 +182,53 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
   // Sonraki aşamaya geçiş
   const handleNextStep = () => {
     if (currentStep.type === 'asil') {
-      if (currentStep.index < winnerCount) {
-        setCurrentStep({ type: 'asil', index: currentStep.index + 1 });
+      if (currentStep.index < currentPrize.winnerCount) {
+        setCurrentStep({ ...currentStep, index: currentStep.index + 1 });
         setWinnerTicket(null);
-      } else if (substituteCount > 0) {
-        setCurrentStep({ type: 'yedek', index: 1 });
+      } else if (currentPrize.substituteCount > 0) {
+        setCurrentStep({ ...currentStep, type: 'yedek', index: 1 });
         setWinnerTicket(null);
       } else {
-        // Çekiliş bitti
-        onDrawComplete({ winners: drawnWinnersRef.current, substitutes: drawnSubstitutesRef.current });
+        goToNextPrize();
       }
     } else {
-      if (currentStep.index < substituteCount) {
-        setCurrentStep({ type: 'yedek', index: currentStep.index + 1 });
+      if (currentStep.index < currentPrize.substituteCount) {
+        setCurrentStep({ ...currentStep, index: currentStep.index + 1 });
         setWinnerTicket(null);
       } else {
-        // Çekiliş bitti
-        onDrawComplete({ winners: drawnWinnersRef.current, substitutes: drawnSubstitutesRef.current });
+        goToNextPrize();
       }
     }
   };
 
-  const isAllDone = (currentStep.type === 'asil' && currentStep.index === winnerCount && winnerTicket) ||
-                    (currentStep.type === 'yedek' && currentStep.index === substituteCount && winnerTicket) ||
-                    (currentStep.type === 'asil' && winnerCount === 0 && substituteCount === 0);
+  const goToNextPrize = () => {
+    if (currentStep.prizeIndex + 1 < activePrizes.length) {
+      setCurrentStep({ prizeIndex: currentStep.prizeIndex + 1, type: 'asil', index: 1 });
+      setWinnerTicket(null);
+    } else {
+      // Çekiliş bitti
+      onDrawComplete({ winners: drawnWinnersRef.current, substitutes: drawnSubstitutesRef.current });
+    }
+  };
+
+  const isAllDone = currentStep.prizeIndex === activePrizes.length - 1 &&
+                    ((currentStep.type === 'asil' && currentStep.index === currentPrize.winnerCount && currentPrize.substituteCount === 0 && winnerTicket) ||
+                    (currentStep.type === 'yedek' && currentStep.index === currentPrize.substituteCount && winnerTicket));
 
   return (
     <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
       
+      {/* Marka Bilgileri Header */}
+      {brand && (brand.name || brand.logo || brand.raffleName) && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '24px', background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '16px', border: '1px solid var(--glass-border)' }}>
+          {brand.logo && <img src={brand.logo} alt="Brand Logo" style={{ height: '50px', objectFit: 'contain', borderRadius: '8px' }} />}
+          <div>
+            {brand.raffleName && <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--insta-yellow)' }}>{brand.raffleName}</h3>}
+            {brand.name && <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-main)', opacity: 0.9 }}>{brand.name}</p>}
+          </div>
+        </div>
+      )}
+
       {/* Üst Panel: Durum & Ses Ayarı */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -230,6 +250,12 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
       {/* ANA ÇARK / SLOT MACHINE EKRANI */}
       <div className="glass-container" style={{ padding: '40px 20px', textAlign: 'center', marginBottom: '24px', background: 'rgba(255,255,255,0.015)' }}>
         
+        {currentPrize.image && (
+          <div style={{ marginBottom: '20px' }}>
+            <img src={currentPrize.image} alt="Prize" style={{ maxWidth: '150px', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} />
+          </div>
+        )}
+
         {/* Slot Alanı */}
         <div style={{ maxWidth: '400px', margin: '0 auto 30px' }}>
           <div className="slot-machine-container">
@@ -288,9 +314,15 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
               @{winnerTicket.username}
             </h1>
             
-            <p style={{ fontStyle: 'italic', fontSize: '14px', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', marginTop: '12px', border: '1px solid var(--glass-border)', display: 'inline-block', width: '100%' }}>
-              "{winnerTicket.comment}"
-            </p>
+            {currentPrize.name ? (
+              <p style={{ fontStyle: 'italic', fontSize: '16px', color: 'var(--insta-yellow)', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', marginTop: '12px', border: '1px solid var(--glass-border)', display: 'inline-block', width: '100%', fontWeight: 600 }}>
+                🎁 Kazandığı Ödül: {currentPrize.name}
+              </p>
+            ) : (
+              <p style={{ fontStyle: 'italic', fontSize: '14px', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', marginTop: '12px', border: '1px solid var(--glass-border)', display: 'inline-block', width: '100%' }}>
+                Tebrikler!
+              </p>
+            )}
 
             {winnerTicket.totalTickets > 1 && (
               <span style={{ display: 'inline-block', fontSize: '11px', background: 'rgba(255,255,255,0.08)', padding: '4px 8px', borderRadius: '20px', marginTop: '10px', color: 'var(--insta-yellow)', fontWeight: 600 }}>
@@ -334,19 +366,26 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
         {/* Asil Listesi */}
         <div className="glass-container" style={{ padding: '16px' }}>
           <h4 style={{ fontSize: '14px', fontWeight: 700, borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px', marginBottom: '12px', color: 'var(--insta-pink)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            🏆 Asil Kazananlar ({drawnWinners.length} / {winnerCount})
+            🏆 Asil Kazananlar
           </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
-            {Array.from({ length: winnerCount }).map((_, idx) => {
-              const winner = drawnWinners.find(w => w.stepIndex === idx + 1);
-              return (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: winner ? 'rgba(225,48,108,0.06)' : 'rgba(255,255,255,0.02)', border: '1px solid', borderColor: winner ? 'rgba(225,48,108,0.2)' : 'var(--glass-border)', borderRadius: '8px', fontSize: '13px' }}>
-                  <span style={{ fontWeight: 600 }}>{idx + 1}. Asil:</span>
-                  <span style={{ color: winner ? '#fff' : 'var(--text-muted)' }}>
-                    {winner ? `@${winner.username}` : 'Çekilmedi'}
-                  </span>
-                </div>
-              );
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto' }}>
+            {activePrizes.map((prize, pIdx) => {
+               const prizeWinners = drawnWinners.filter(w => w.prizeId === prize.id);
+               return (
+                 <div key={prize.id} style={{ marginBottom: '8px' }}>
+                   <strong style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{prize.name || `${pIdx+1}. Ödül`}</strong>
+                   {Array.from({ length: prize.winnerCount }).map((_, idx) => {
+                     const winner = prizeWinners.find(w => w.stepIndex === idx + 1);
+                     const isActive = currentStep.prizeIndex === pIdx && currentStep.type === 'asil' && currentStep.index === idx + 1;
+                     return (
+                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: isActive ? 'rgba(255,255,255,0.1)' : winner ? 'rgba(225,48,108,0.06)' : 'rgba(255,255,255,0.02)', border: '1px solid', borderColor: isActive ? 'var(--insta-pink)' : winner ? 'rgba(225,48,108,0.2)' : 'var(--glass-border)', borderRadius: '6px', fontSize: '12px', marginTop: '4px' }}>
+                         <span style={{ fontWeight: 600 }}>{idx + 1}. Asil:</span>
+                         <span style={{ color: winner ? '#fff' : 'var(--text-muted)' }}>{winner ? `@${winner.username}` : 'Çekilmedi'}</span>
+                       </div>
+                     );
+                   })}
+                 </div>
+               );
             })}
           </div>
         </div>
@@ -354,19 +393,27 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
         {/* Yedek Listesi */}
         <div className="glass-container" style={{ padding: '16px' }}>
           <h4 style={{ fontSize: '14px', fontWeight: 700, borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px', marginBottom: '12px', color: 'var(--insta-orange)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            ⏱️ Yedek Kazananlar ({drawnSubstitutes.length} / {substituteCount})
+            ⏱️ Yedek Kazananlar
           </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
-            {Array.from({ length: substituteCount }).map((_, idx) => {
-              const sub = drawnSubstitutes.find(s => s.stepIndex === idx + 1);
-              return (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: sub ? 'rgba(251,173,80,0.06)' : 'rgba(255,255,255,0.02)', border: '1px solid', borderColor: sub ? 'rgba(251,173,80,0.2)' : 'var(--glass-border)', borderRadius: '8px', fontSize: '13px' }}>
-                  <span style={{ fontWeight: 600 }}>{idx + 1}. Yedek:</span>
-                  <span style={{ color: sub ? '#fff' : 'var(--text-muted)' }}>
-                    {sub ? `@${sub.username}` : 'Çekilmedi'}
-                  </span>
-                </div>
-              );
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto' }}>
+            {activePrizes.map((prize, pIdx) => {
+               if (prize.substituteCount === 0) return null;
+               const prizeSubs = drawnSubstitutes.filter(w => w.prizeId === prize.id);
+               return (
+                 <div key={prize.id} style={{ marginBottom: '8px' }}>
+                   <strong style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{prize.name || `${pIdx+1}. Ödül`}</strong>
+                   {Array.from({ length: prize.substituteCount }).map((_, idx) => {
+                     const sub = prizeSubs.find(s => s.stepIndex === idx + 1);
+                     const isActive = currentStep.prizeIndex === pIdx && currentStep.type === 'yedek' && currentStep.index === idx + 1;
+                     return (
+                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: isActive ? 'rgba(255,255,255,0.1)' : sub ? 'rgba(251,173,80,0.06)' : 'rgba(255,255,255,0.02)', border: '1px solid', borderColor: isActive ? 'var(--insta-orange)' : sub ? 'rgba(251,173,80,0.2)' : 'var(--glass-border)', borderRadius: '6px', fontSize: '12px', marginTop: '4px' }}>
+                         <span style={{ fontWeight: 600 }}>{idx + 1}. Yedek:</span>
+                         <span style={{ color: sub ? '#fff' : 'var(--text-muted)' }}>{sub ? `@${sub.username}` : 'Çekilmedi'}</span>
+                       </div>
+                     );
+                   })}
+                 </div>
+               );
             })}
           </div>
         </div>
