@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Users, ListFilter, Play, Info, Trash2, CheckCircle, Award, Image as ImageIcon } from 'lucide-react';
+import { Settings, Upload, Users, ListFilter, Play, Info, Trash2, CheckCircle, Award, Image as ImageIcon, Puzzle, Download, ExternalLink } from 'lucide-react';
+import { LINKS } from '../config';
 
 const MOCK_COMMENTS_PRESET = [
   { username: 'ahmet_yılmaz', text: 'Harika bir çekiliş! Katılıyorum @merve_kaya @can_demir @elif_sahin' },
@@ -31,6 +32,14 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
   const [prizes, setPrizes] = useState([
     { id: Date.now(), name: '', image: '', winnerCount: 1, substituteCount: 1 }
   ]);
+  const [entryMethod, setEntryMethod] = useState('one_per_user');
+  const [minMentions, setMinMentions] = useState(0);
+  const [mentionMode, setMentionMode] = useState('per_comment');
+  const [weightedEntry, setWeightedEntry] = useState(false);
+  const [uniqueMentions, setUniqueMentions] = useState(false);
+  const [keywordRequired, setKeywordRequired] = useState('');
+  const [keywordBlacklist, setKeywordBlacklist] = useState('');
+  const [userBlacklist, setUserBlacklist] = useState('');
 
   // Local storage'dan kayitli veriyi yukle
   useEffect(() => {
@@ -42,6 +51,14 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
         if (parsed.comments) setComments(parsed.comments);
         if (parsed.brand) setBrand(parsed.brand);
         if (parsed.prizes) setPrizes(parsed.prizes);
+        if (parsed.entryMethod) setEntryMethod(parsed.entryMethod);
+        if (parsed.minMentions != null) setMinMentions(parsed.minMentions);
+        if (parsed.mentionMode) setMentionMode(parsed.mentionMode);
+        if (parsed.weightedEntry != null) setWeightedEntry(parsed.weightedEntry);
+        if (parsed.uniqueMentions != null) setUniqueMentions(parsed.uniqueMentions);
+        if (parsed.keywordRequired) setKeywordRequired(parsed.keywordRequired);
+        if (parsed.keywordBlacklist) setKeywordBlacklist(parsed.keywordBlacklist);
+        if (parsed.userBlacklist) setUserBlacklist(parsed.userBlacklist);
       } catch (e) {
         console.error('Error parsing local storage data', e);
       }
@@ -406,6 +423,71 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', width: '100%', maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
       
+      {/* Chrome Eklentisi Kurulum Rehberi */}
+      {(!importedComments || importedComments.length === 0) && comments.length === 0 && (
+        <div className="glass-container" style={{ padding: '20px 24px', background: 'rgba(64, 93, 230, 0.08)', borderColor: 'rgba(64, 93, 230, 0.25)', borderRadius: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+              <div style={{ background: 'var(--insta-gradient)', padding: '10px', borderRadius: '12px', flexShrink: 0 }}>
+                <Puzzle size={22} color="white" />
+              </div>
+              <div>
+                <h4 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700, color: 'var(--insta-blue)' }}>
+                  Instagram yorumlarını otomatik aktarın
+                </h4>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                  Yorumları elle kopyalamak yerine Chrome eklentimizi kullanın. Önce eklentiyi indirip kurun,
+                  ardından Instagram&apos;da çekiliş gönderinizi açın — yorumları eklenti üzerinden çekip buraya aktarırız.
+                </p>
+              </div>
+            </div>
+
+            <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: 'var(--text-main)', lineHeight: 1.8 }}>
+              <li>
+                <strong>Chrome eklentisini indirin ve kurun</strong> — ZIP dosyasını indirin, arşivi açın.
+                Chrome&apos;da <code style={{ fontSize: '12px', background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px' }}>chrome://extensions</code> adresine gidin,
+                <em> Geliştirici modu</em>nu açın ve <em>Paketlenmemiş öğe yükle</em> ile açtığınız klasörü seçin.
+              </li>
+              <li>
+                <strong>Instagram&apos;da çekiliş gönderinizi açın</strong> — yorumların olduğu gönderi veya reel sayfasına gidin.
+              </li>
+              <li>
+                <strong>Eklenti ikonuna tıklayın</strong> — yorumları çekin ve <em>Çekiliş Uygulamasına Aktar</em> butonuna basın; veriler buraya otomatik gelir.
+              </li>
+            </ol>
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <a
+                href={LINKS.extensionDownload}
+                download="instagram-raffle-helper.zip"
+                className="btn btn-primary"
+                style={{ padding: '10px 18px', fontSize: '13px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+              >
+                <Download size={16} /> Chrome Eklentisini İndir
+              </a>
+              <a
+                href={LINKS.extensionGuide}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-secondary"
+                style={{ padding: '10px 18px', fontSize: '13px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+              >
+                <ExternalLink size={16} /> Kurulum Rehberi (GitHub)
+              </a>
+              <a
+                href={LINKS.instagram}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-secondary"
+                style={{ padding: '10px 18px', fontSize: '13px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px', borderColor: 'rgba(225, 48, 108, 0.3)' }}
+              >
+                Instagram&apos;ı Aç
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Üst Bilgilendirme */}
       {importedComments && importedComments.length > 0 && (
         <div className="glass-container" style={{ padding: '16px 20px', background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '16px' }}>
@@ -480,11 +562,22 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
             </div>
             <div className="form-group">
               <label className="form-label">Marka Logosu</label>
-              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '12px', cursor: 'pointer', color: 'var(--text-main)', fontSize: '14px' }}>
-                <Upload size={16} color="var(--insta-pink)" />
-                {brand.logo ? 'Logo Yüklendi' : 'Logo Yükle'}
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '12px', cursor: 'pointer', color: 'var(--text-main)', fontSize: '14px', minHeight: brand.logo ? '80px' : 'auto' }}>
+                {brand.logo ? (
+                  <img src={brand.logo} alt="Marka logosu" style={{ maxHeight: '60px', maxWidth: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+                ) : (
+                  <>
+                    <Upload size={16} color="var(--insta-pink)" />
+                    Logo Yükle
+                  </>
+                )}
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleImageUpload(e, (res) => setBrand({...brand, logo: res}))} />
               </label>
+              {brand.logo && (
+                <button type="button" className="btn btn-secondary" style={{ marginTop: '8px', padding: '4px 10px', fontSize: '11px', width: '100%' }} onClick={() => setBrand({...brand, logo: ''})}>
+                  Logoyu Kaldır
+                </button>
+              )}
             </div>
           </div>
 
@@ -511,10 +604,21 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label" style={{ fontSize: '12px' }}>Ürün Resmi (Opsiyonel)</label>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '8px 12px', cursor: 'pointer', fontSize: '13px' }}>
-                      <ImageIcon size={14} color="var(--insta-blue)" /> {prize.image ? 'Yüklendi' : 'Resim Seç'}
+                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '8px 12px', cursor: 'pointer', fontSize: '13px', minHeight: prize.image ? '70px' : 'auto' }}>
+                      {prize.image ? (
+                        <img src={prize.image} alt={prize.name || `${idx + 1}. ödül`} style={{ maxHeight: '56px', maxWidth: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+                      ) : (
+                        <>
+                          <ImageIcon size={14} color="var(--insta-blue)" /> Resim Seç
+                        </>
+                      )}
                       <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleImageUpload(e, (res) => updatePrize(prize.id, 'image', res))} />
                     </label>
+                    {prize.image && (
+                      <button type="button" className="btn btn-secondary" style={{ marginTop: '6px', padding: '3px 8px', fontSize: '10px', width: '100%' }} onClick={() => updatePrize(prize.id, 'image', '')}>
+                        Resmi Kaldır
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -698,6 +802,16 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
           <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
             <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Toplam Bilet</span>
             <strong style={{ fontSize: '20px', fontFamily: 'var(--font-title)', fontWeight: 800, color: 'var(--insta-pink)' }}>{ticketsPool.length}</strong>
+          </div>
+          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ödül Sayısı</span>
+            <strong style={{ fontSize: '20px', fontFamily: 'var(--font-title)', fontWeight: 800, color: 'var(--insta-yellow)' }}>{prizes.length}</strong>
+          </div>
+          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Asil / Yedek</span>
+            <strong style={{ fontSize: '20px', fontFamily: 'var(--font-title)', fontWeight: 800, color: 'var(--insta-blue)' }}>
+              {prizes.reduce((s, p) => s + parseInt(p.winnerCount || 0), 0)} / {prizes.reduce((s, p) => s + parseInt(p.substituteCount || 0), 0)}
+            </strong>
           </div>
         </div>
 
