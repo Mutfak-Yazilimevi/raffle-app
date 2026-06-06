@@ -1,9 +1,10 @@
-export const PARTICIPATION_INTRO =
-  'İsteğe bağlı katılım şartları. İşaretledikleriniz ilan ve story metinlerinde görünür; '
-  + 'otomatik kontrol edilemeyen maddeler kazanan doğrulama listesine eklenir.';
+export const COMMENT_BASELINE =
+  'Çekilişe katılım yorum bırakarak yapılır. Yorumlar Chrome eklentisi ile içe aktarılır; bu tek temel etkileşimdir.';
 
-export const FILTER_INTRO =
-  'Yorum metnine göre otomatik eleme yapılır. Bu alanlar doldurulduğunda şartı sağlamayan yorumlar çekiliş havuzuna hiç alınmaz.';
+export const COMMENT_RULES_INTRO =
+  'Yorum metninden otomatik uygulanır. Şartı sağlamayan yorumlar çekiliş havuzuna alınmaz.';
+
+export const FILTER_INTRO = COMMENT_RULES_INTRO;
 
 export const ENTRY_METHOD_HELP =
   'Yorumlar içe aktarıldığında çekiliş havuzuna kaç bilet düşeceğini belirler.';
@@ -86,21 +87,35 @@ export const CRITERIA_COPY = {
 };
 
 export const SECTION_COPY = {
-  basic: {
-    title: 'Temel Etkileşimler',
-    intro: 'Instagram gönderisiyle etkileşim beklentisi. Beğeni ve kaydetme uygulama tarafından otomatik doğrulanmaz.',
+  commentRules: {
+    title: 'Yorum Kuralları',
+    intro: COMMENT_RULES_INTRO,
+    badge: 'auto',
+  },
+  postInteraction: {
+    title: 'Gönderi Etkileşimi',
+    intro: 'Beğeni ve kaydetme gönderi üzerinde yapılır; yorum metninden okunamaz. Kazanan adayında manuel kontrol edilir.',
+    badge: 'manual',
+  },
+  account: {
+    title: 'Hesap Şartları',
+    intro: 'Profil düzeyinde beklentiler. Takip şartı Chrome eklentisi ile doğrulanabilir.',
+    badge: 'extension',
   },
   multiEntry: {
     title: 'Çoklu Katılım',
     intro: 'Aynı kişinin birden fazla yorum yapması durumunda hak dağılımını ayarlar.',
+    badge: null,
   },
   story: {
     title: 'Hikâye Paylaşımı',
     intro: 'Katılımcının çekiliş gönderisini kendi Instagram hikâyesinde paylaşması beklentisi. Otomatik doğrulama yoktur.',
+    badge: 'manual',
   },
   legal: {
     title: 'Yasal ve Hesap Kriterleri',
     intro: 'Bilgilendirme ve kazanan sonrası manuel teyit içindir; yorum içe aktarımında otomatik filtre uygulanmaz.',
+    badge: 'manual',
   },
 };
 

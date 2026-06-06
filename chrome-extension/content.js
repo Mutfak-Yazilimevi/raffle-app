@@ -15,14 +15,25 @@ const NOISE_PATTERNS = [
 
 const EXPAND_ALL_PATTERNS = [
   /tüm\s*\d*\s*yorum/u,
+  /yorum.*tümün/u,
+  /tümün.*yorum/u,
   /view\s+all\s+\d*\s*comments?/i,
+  /see\s+all\s+\d*\s*comments?/i,
+  /\d+\s+yorum/u,
+  /\d+\s+comments?/i,
+];
+
+const OPEN_COMMENTS_PATTERNS = [
   /^\d+\s+yorum/u,
-  /^\d+\s+comments/i,
+  /^\d+\s+comments?/i,
+  /yorum.*(gör|oku)/iu,
+  /(view|see)\s+(all\s+)?\d*\s*comments?/i,
 ];
 
 const LOAD_MORE_PATTERNS = [
-  /^daha\s+fazla\s+yorum\s+yükle$/i,
-  /^load\s+more\s+comments?$/i,
+  /daha\s+fazla\s+yorum\s+yükle/i,
+  /load\s+more\s+comments?/i,
+  /daha\s+fazla\s+yükle/i,
 ];
 
 const SVG_LOAD_LABELS = new Set([
@@ -45,6 +56,7 @@ let scrapingActive = false;
 let scrapingTimer = null;
 let observer = null;
 let observerFlushTimer = null;
+let observedCommentUl = null;
 let commentsMap = new Map();
 let commentUl = null;
 let scrollContainer = null;
@@ -57,6 +69,107 @@ let lastCountAtClick = 0;
 let scrollIntervalMs = SCROLL_INTERVAL_MIN_MS;
 let clickedLoadMoreKeys = new Set();
 let menuDismissStep = 0;
+
+window.addEventListener('message', (event) => {
+  if (event.source !== window || event.data?.type !== 'RAFFLE_IG_NETWORK') return;
+  ingestCommentsFromNetworkPayload(event.data.body);
+});
+
+function getScrapeRoot() {
+  return document.querySelector('div[role="dialog"]')
+    || document.querySelector('main')
+    || document;
+}
+
+function addComment(username, text) {
+  const trimmed = (text || '').trim();
+  if (!username || !trimmed || isNoise(trimmed)) return false;
+  commentsMap.set(`${username.toLowerCase()}:${trimmed}`, { username, text: trimmed });
+  return true;
+}
+
+function ingestCommentsFromNetworkPayload(payload) {
+  if (!payload) return;
+
+  try {
+    walkForNetworkComments(JSON.parse(payload));
+  } catch (_) {
+    /* ignore invalid JSON */
+  }
+}
+
+function ingestCommentNode(node) {
+  const username =
+    node?.user?.username
+    || node?.owner?.username
+    || node?.commenter?.username;
+
+  const text = node?.text || node?.comment_text;
+  if (addComment(username, text)) notifyPopup();
+}
+
+function walkForNetworkComments(value, depth = 0) {
+  if (!value || depth > 16) return;
+
+  if (Array.isArray(value)) {
+    for (const item of value) walkForNetworkComments(item, depth + 1);
+    return;
+  }
+
+  if (typeof value !== 'object') return;
+
+  if (value.node?.user?.username && typeof value.node?.text === 'string') {
+    ingestCommentNode(value.node);
+  }
+
+  if (value.user?.username && typeof value.text === 'string') {
+    ingestCommentNode(value);
+  }
+
+  if (Array.isArray(value.edges)) {
+    for (const edge of value.edges) {
+      if (edge?.node) ingestCommentNode(edge.node);
+      walkForNetworkComments(edge, depth + 1);
+    }
+  }
+
+  for (const key of Object.keys(value)) {
+    if (key === '__typename') continue;
+    walkForNetworkComments(value[key], depth + 1);
+  }
+}
+
+function scrapeEmbeddedPageData() {
+  for (const script of document.querySelectorAll('script:not([src])')) {
+    const raw = script.textContent || '';
+    if (raw.length < 80 || !/comment/i.test(raw)) continue;
+
+    if (script.type === 'application/json' || script.type === 'application/ld+json') {
+      try {
+        walkForNetworkComments(JSON.parse(raw));
+      } catch (_) {
+        /* ignore */
+      }
+      continue;
+    }
+
+    const markers = ['"comments"', '"xdt_api', '"edge_media_to_comment"'];
+    if (!markers.some((marker) => raw.includes(marker))) continue;
+
+    try {
+      walkForNetworkComments(JSON.parse(raw));
+    } catch (_) {
+      const chunks = raw.match(/\{"require":[\s\S]*?\}\]\}/g) || [];
+      for (const chunk of chunks) {
+        try {
+          walkForNetworkComments(JSON.parse(chunk));
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+  }
+}
 
 function isNoise(text) {
   return NOISE_PATTERNS.some((pattern) => pattern.test(text));
@@ -71,32 +184,42 @@ function extractUsername(link) {
   return match[1];
 }
 
-function parseCommentLi(li) {
-  const userLinks = li.querySelectorAll('a[href^="/"]');
+function parseCommentRow(row) {
+  const userEl = row.querySelector('h2 a, h3 a, a[role="link"], a[href^="/"]');
   let username = null;
 
-  for (const link of userLinks) {
-    const found = extractUsername(link);
-    if (found) {
-      username = found;
-      break;
+  if (userEl) {
+    const fromLink = extractUsername(userEl) || userEl.textContent.trim().replace(/^@/, '');
+    if (fromLink && !SKIP_USERNAMES.has(fromLink.toLowerCase())) {
+      username = fromLink;
+    }
+  }
+
+  if (!username) {
+    for (const link of row.querySelectorAll('a[href^="/"]')) {
+      const found = extractUsername(link);
+      if (found) {
+        username = found;
+        break;
+      }
     }
   }
   if (!username) return null;
 
   let commentText = '';
-  const spans = li.querySelectorAll('span[dir="auto"]');
+  const textCandidates = row.querySelectorAll('span[dir="auto"], [dir="auto"], h1, h2, h3, span');
 
-  for (const span of spans) {
-    const text = span.textContent.trim();
+  for (const node of textCandidates) {
+    const text = node.textContent.trim();
     if (!text || text === username) continue;
     if (text.startsWith('@') && !text.includes(' ')) continue;
     if (isNoise(text)) continue;
+    if (userEl && node.closest('a') === userEl) continue;
     if (text.length > commentText.length) commentText = text;
   }
 
   if (!commentText) {
-    const heading = li.querySelector('h1');
+    const heading = row.querySelector('h1, h2, h3');
     if (heading) {
       const text = heading.textContent.trim();
       if (text && text !== username && !isNoise(text)) commentText = text;
@@ -107,30 +230,61 @@ function parseCommentLi(li) {
   return { username, text: commentText };
 }
 
-function findCommentSection() {
-  const dialog = document.querySelector('div[role="dialog"]');
-  const root = dialog || document.querySelector('main') || document;
+function parseCommentLi(li) {
+  return parseCommentRow(li);
+}
 
-  let bestUl = null;
+function scoreCommentContainer(container) {
+  const directItems = container.querySelectorAll(':scope > li, :scope > [role="listitem"]');
+  if (directItems.length < 1) return 0;
+
+  let score = directItems.length;
+  const sample = directItems[0];
+  if (sample?.querySelector('a[href^="/"], h2 a, h3 a') && sample?.querySelector('span[dir="auto"], [dir="auto"], h1, h2, span')) {
+    score += 20;
+  }
+
+  let parsed = 0;
+  const sampleSize = Math.min(directItems.length, 5);
+  for (let i = 0; i < sampleSize; i += 1) {
+    if (parseCommentRow(directItems[i])) parsed += 1;
+  }
+  score += parsed * 15;
+
+  return score;
+}
+
+function findCommentSection() {
+  const root = getScrapeRoot();
+
+  let bestContainer = null;
   let bestScore = 0;
 
-  for (const ul of root.querySelectorAll('ul')) {
-    const directItems = ul.querySelectorAll(':scope > li');
-    if (directItems.length < 1) continue;
-
-    let score = directItems.length;
-    const sample = directItems[0];
-    if (sample?.querySelector('a[href^="/"]') && sample?.querySelector('span[dir="auto"], h1')) {
-      score += 20;
-    }
-
+  for (const container of root.querySelectorAll('ul, [role="list"]')) {
+    const score = scoreCommentContainer(container);
     if (score > bestScore) {
       bestScore = score;
-      bestUl = ul;
+      bestContainer = container;
     }
   }
 
-  return bestUl;
+  return bestContainer;
+}
+
+function scrapeCommentList(container, forceFull = false) {
+  const items = container.querySelectorAll(':scope > li, :scope > [role="listitem"]');
+  const startIndex = forceFull
+    ? 0
+    : Math.max(0, Math.min(lastParsedLiCount, items.length) - 1);
+
+  for (let i = startIndex; i < items.length; i += 1) {
+    const parsed = parseCommentRow(items[i]);
+    if (parsed) {
+      commentsMap.set(`${parsed.username.toLowerCase()}:${parsed.text}`, parsed);
+    }
+  }
+
+  return items.length;
 }
 
 function findScrollContainer(element) {
@@ -170,21 +324,20 @@ function scrapeVisibleComments(forceFull = false) {
   lastScrapeTime = now;
 
   if (!commentUl || !commentUl.isConnected) refreshCommentTargets();
-  if (!commentUl) return commentsMap.size;
 
-  const items = commentUl.querySelectorAll(':scope > li');
-  const startIndex = forceFull
-    ? 0
-    : Math.max(0, Math.min(lastParsedLiCount, items.length) - 1);
+  const root = getScrapeRoot();
+  let maxItems = 0;
 
-  for (let i = startIndex; i < items.length; i += 1) {
-    const parsed = parseCommentLi(items[i]);
-    if (parsed) {
-      commentsMap.set(`${parsed.username.toLowerCase()}:${parsed.text}`, parsed);
+  if (commentUl && commentUl.isConnected) {
+    maxItems = Math.max(maxItems, scrapeCommentList(commentUl, forceFull));
+  } else {
+    for (const container of root.querySelectorAll('ul, [role="list"]')) {
+      maxItems = Math.max(maxItems, scrapeCommentList(container, true));
     }
   }
 
-  lastParsedLiCount = items.length;
+  scrapeEmbeddedPageData();
+  lastParsedLiCount = maxItems;
   return commentsMap.size;
 }
 
@@ -196,6 +349,7 @@ function notifyPopup(force = false) {
   chrome.runtime.sendMessage({
     type: 'SCRAPE_UPDATE',
     count: commentsMap.size,
+    phase: commentsMap.size > 0 ? 'scraping' : 'loading',
   }).catch(() => {});
 }
 
@@ -210,8 +364,42 @@ function scheduleObserverScrape() {
 
 function isInsideCommentRow(el) {
   if (!commentUl) return false;
-  const li = el.closest('li');
-  return Boolean(li && li.closest('ul') === commentUl);
+  const row = el.closest('li, [role="listitem"]');
+  if (!row) return false;
+  const list = row.closest('ul, [role="list"]');
+  return list === commentUl;
+}
+
+function findClickableAncestor(el) {
+  if (!(el instanceof Element)) return null;
+  return el.closest('button, a, [role="button"], [role="link"]')
+    || (el.getAttribute('tabindex') === '0' ? el : null)
+    || el;
+}
+
+function clickByVisibleText(root, matcher, keyPrefix) {
+  for (const el of root.querySelectorAll('span, div, a, button')) {
+    if (!(el instanceof Element)) continue;
+
+    const ownText = Array.from(el.childNodes)
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent.trim())
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const text = ownText || (el.children.length <= 1 ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+    if (!text || text.length > 100) continue;
+
+    const label = text.toLowerCase();
+    if (!matcher(label)) continue;
+
+    const clickable = findClickableAncestor(el);
+    if (!clickable) continue;
+    if (clickTrackedTarget(clickable, `${keyPrefix}:${label}`)) return true;
+  }
+
+  return false;
 }
 
 function getElementLabel(el) {
@@ -226,21 +414,43 @@ function hasBlockedAria(el) {
 }
 
 function matchesLoadMoreLabel(label) {
-  if (!label || label.length > 80) return false;
+  if (!label || label.length > 120) return false;
   return (
     EXPAND_ALL_PATTERNS.some((pattern) => pattern.test(label)) ||
     LOAD_MORE_PATTERNS.some((pattern) => pattern.test(label))
   );
 }
 
+function matchesOpenCommentsLabel(label) {
+  if (!label || label.length > 120) return false;
+  return OPEN_COMMENTS_PATTERNS.some((pattern) => pattern.test(label));
+}
+
+function isInteractiveTarget(el) {
+  if (!(el instanceof Element)) return false;
+  if (el instanceof HTMLButtonElement || el instanceof HTMLAnchorElement) return true;
+  const role = el.getAttribute('role');
+  return role === 'button' || role === 'link';
+}
+
 function isSafeLoadMoreTarget(el) {
-  if (!(el instanceof HTMLButtonElement || el instanceof HTMLAnchorElement)) return false;
+  if (!isInteractiveTarget(el)) return false;
   if (isInsideCommentRow(el)) return false;
   if (hasBlockedAria(el)) return false;
   if (el.closest('[role="menu"], [role="menuitem"]')) return false;
 
   const label = getElementLabel(el);
   return matchesLoadMoreLabel(label);
+}
+
+function isSafeOpenCommentsTarget(el) {
+  if (!isInteractiveTarget(el)) return false;
+  if (isInsideCommentRow(el)) return false;
+  if (hasBlockedAria(el)) return false;
+  if (el.closest('[role="menu"], [role="menuitem"]')) return false;
+
+  const label = getElementLabel(el);
+  return matchesOpenCommentsLabel(label) || matchesLoadMoreLabel(label);
 }
 
 function dismissAccidentalMenus() {
@@ -269,21 +479,49 @@ function dismissAccidentalMenus() {
   }
 }
 
+function clickTrackedTarget(el, key) {
+  if (!key || clickedLoadMoreKeys.has(key)) return false;
+  try {
+    el.click();
+    clickedLoadMoreKeys.add(key);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function clickOpenCommentsPanel() {
+  const root = loadMoreRoot || getScrapeRoot();
+
+  if (clickByVisibleText(root, (label) => (
+    matchesOpenCommentsLabel(label) || matchesLoadMoreLabel(label)
+  ), 'open-text')) {
+    return true;
+  }
+
+  for (const el of root.querySelectorAll('button, a, [role="button"], [role="link"]')) {
+    if (!isSafeOpenCommentsTarget(el)) continue;
+    if (clickTrackedTarget(el, `open:${getElementLabel(el)}`)) return true;
+  }
+
+  for (const svg of root.querySelectorAll('svg[aria-label]')) {
+    const label = (svg.getAttribute('aria-label') || '').trim().toLowerCase();
+    if (!/comment|yorum/i.test(label) || /(add|ekle|write|yaz)/i.test(label)) continue;
+    const btn = svg.closest('button, [role="button"], a');
+    if (btn && clickTrackedTarget(btn, `open-svg:${label}`)) return true;
+  }
+
+  return false;
+}
+
 function clickLoadMoreButtons() {
   dismissAccidentalMenus();
 
-  const root = loadMoreRoot || document.querySelector('main') || document;
+  const root = loadMoreRoot || getScrapeRoot();
 
-  for (const el of root.querySelectorAll('button, a[href="#"]')) {
+  for (const el of root.querySelectorAll('button, a, [role="button"], [role="link"]')) {
     if (!isSafeLoadMoreTarget(el)) continue;
-
-    const key = getElementLabel(el);
-    if (clickedLoadMoreKeys.has(key)) continue;
-
-    try {
-      el.click();
-      clickedLoadMoreKeys.add(key);
-    } catch (_) { /* ignore */ }
+    clickTrackedTarget(el, getElementLabel(el));
   }
 
   for (const svg of root.querySelectorAll('svg[aria-label]')) {
@@ -291,13 +529,9 @@ function clickLoadMoreButtons() {
     if (!SVG_LOAD_LABELS.has(label)) continue;
     if (isInsideCommentRow(svg)) continue;
 
-    const btn = svg.closest('button');
+    const btn = svg.closest('button, [role="button"]');
     if (!btn || clickedLoadMoreKeys.has(label)) continue;
-
-    try {
-      btn.click();
-      clickedLoadMoreKeys.add(label);
-    } catch (_) { /* ignore */ }
+    clickTrackedTarget(btn, label);
   }
 }
 
@@ -305,12 +539,18 @@ function autoScrollStep() {
   scrollStepCount += 1;
   const countBefore = commentsMap.size;
 
+  if (scrollStepCount === 1 || (scrollStepCount % 6 === 0 && commentsMap.size === 0)) {
+    clickOpenCommentsPanel();
+    refreshCommentTargets();
+  }
+
   if (scrollStepCount === 1 || (scrollStepCount % 8 === 0 && commentsMap.size === lastCountAtClick)) {
     clickLoadMoreButtons();
     lastCountAtClick = commentsMap.size;
   }
 
   if (!commentUl || !commentUl.isConnected) refreshCommentTargets();
+  ensureObserver();
 
   if (scrollContainer) {
     scrollContainer.scrollTop += Math.max(450, scrollContainer.clientHeight * 0.9);
@@ -350,6 +590,18 @@ function startObserver() {
   });
 
   observer.observe(commentUl, { childList: true, subtree: false });
+  observedCommentUl = commentUl;
+}
+
+function ensureObserver() {
+  if (!commentUl || !commentUl.isConnected) refreshCommentTargets();
+  if (!commentUl) {
+    stopObserver();
+    observedCommentUl = null;
+    return;
+  }
+  if (observer && observedCommentUl === commentUl) return;
+  startObserver();
 }
 
 function stopObserver() {
@@ -361,6 +613,7 @@ function stopObserver() {
     observer.disconnect();
     observer = null;
   }
+  observedCommentUl = null;
 }
 
 function stopScraping() {
@@ -416,9 +669,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     stopScraping();
     resetState();
     refreshCommentTargets();
+    clickOpenCommentsPanel();
     clickLoadMoreButtons();
     scrapeVisibleComments(true);
-    startObserver();
+    ensureObserver();
 
     scrapingActive = true;
     autoScrollStep();
@@ -430,6 +684,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ status: 'stopped', count });
   } else if (request.type === 'GET_COMMENTS') {
     scrapeVisibleComments(true);
+    scrapeEmbeddedPageData();
     sendResponse({ comments: getCommentsArray() });
   } else if (request.type === 'VERIFY_PARTICIPANT_FOLLOWS') {
     const verifyFn = window.__raffleFollowVerify?.verifyParticipantFollowsRequired;

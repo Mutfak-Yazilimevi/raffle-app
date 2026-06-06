@@ -54,6 +54,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
   const [configMessage, setConfigMessage] = useState('');
   const [generatingSetupStory, setGeneratingSetupStory] = useState(false);
   const [generatingStartingStory, setGeneratingStartingStory] = useState(false);
+  const [savingRaffle, setSavingRaffle] = useState(false);
 
   const configFileInputRef = useRef(null);
 
@@ -83,6 +84,18 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
       requireStoryShare, requireStoryProofIfPrivate, requireMinAge, minAge,
       requireRealActiveAccount, disallowBusinessAccounts]
   );
+
+  const buildPersistState = () => ({
+    comments, brand, prizes,
+    entryMethod, minMentions, mentionMode, weightedEntry,
+    uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
+    requiredFollowAccounts,
+    minRequiredFollows: effectiveMinRequiredFollows,
+    followVerification,
+    ...participationCriteria,
+    showPrizeProductsInResultsStory,
+    storyBackgroundId,
+  });
 
   const getConfigState = () => ({
     brand, prizes, entryMethod, minMentions, mentionMode, weightedEntry,
@@ -263,17 +276,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
   useEffect(() => {
     if (!activeRaffleId) return undefined;
     const timeoutId = window.setTimeout(() => {
-      saveSetupState({
-        comments, brand, prizes,
-        entryMethod, minMentions, mentionMode, weightedEntry,
-        uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
-        requiredFollowAccounts,
-        minRequiredFollows: effectiveMinRequiredFollows,
-        followVerification,
-        ...participationCriteria,
-        showPrizeProductsInResultsStory,
-        storyBackgroundId,
-      }, activeRaffleId).then((saved) => {
+      saveSetupState(buildPersistState(), activeRaffleId).then((saved) => {
         setStorageWarning(saved ? '' : 'Tarayıcı depolama alanı dolu olabilir; ayarlar tam kaydedilemedi.');
       });
     }, 400);
@@ -474,6 +477,27 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     [participantStats]
   );
 
+  const handleSaveRaffle = async () => {
+    if (!activeRaffleId) {
+      setConfigMessage('Kaydetmek için önce bir çekiliş oluşturun.');
+      return false;
+    }
+    if (!brand.raffleName?.trim()) {
+      setConfigMessage('Çekiliş adını girdikten sonra kaydedebilirsiniz.');
+      return false;
+    }
+
+    setSavingRaffle(true);
+    try {
+      const saved = await saveSetupState(buildPersistState(), activeRaffleId);
+      setStorageWarning(saved ? '' : 'Tarayıcı depolama alanı dolu olabilir; ayarlar tam kaydedilemedi.');
+      setConfigMessage(saved ? 'Çekiliş kaydedildi.' : 'Kayıt tamamlanamadı; depolama alanını kontrol edin.');
+      return saved;
+    } finally {
+      setSavingRaffle(false);
+    }
+  };
+
   const handleExportConfigTxt = () => {
     const slug = brand.raffleName?.toLowerCase().replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '') || 'cekilis';
     downloadConfigTxt(getConfigState(), `${slug}_ayarlari.txt`);
@@ -577,9 +601,9 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     storyBackgroundId, setStoryBackgroundId,
     comments, clearData,
     handleImageUpload, ticketsPool, uniqueParticipantsCount, participantStats, filteredOutCount,
-    storageWarning, configMessage,
+    storageWarning, configMessage, savingRaffle,
     generatingSetupStory, generatingStartingStory,
-    handleExportConfigTxt, handleImportConfigTxt,
+    handleSaveRaffle, handleExportConfigTxt, handleImportConfigTxt,
     handleGenerateSetupStory, handleGenerateStartingStory,
     configFileInputRef, buildSetupConfig, validateStart, resetForm,
   };

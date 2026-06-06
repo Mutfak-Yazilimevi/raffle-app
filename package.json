@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npm run zip-extension && vite",
     "zip-extension": "node scripts/zip-extension.mjs",
-    "build": "npm run zip-extension && vite build",
+    "build": "npm run zip-extension && vite build && node scripts/ensure-extension-in-dist.mjs",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },

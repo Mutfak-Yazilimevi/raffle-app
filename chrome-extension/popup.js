@@ -233,6 +233,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   const followVerifyStatus = document.getElementById('follow-verify-status');
   const btnVerifyFollows = document.getElementById('btn-verify-follows');
 
+  let zeroCommentHintTimer = null;
+
+  function clearZeroCommentHintTimer() {
+    if (zeroCommentHintTimer) {
+      clearTimeout(zeroCommentHintTimer);
+      zeroCommentHintTimer = null;
+    }
+  }
+
+  function scheduleZeroCommentHint() {
+    clearZeroCommentHintTimer();
+    zeroCommentHintTimer = setTimeout(() => {
+      if (!isScraping || Number(commentCountEl.textContent) > 0) return;
+      scrollStatusEl.textContent = 'Yorum bulunamadı — gönderide "tüm yorumları gör"e tıklayın';
+      scrollStatusEl.className = 'status-value error';
+    }, 12000);
+  }
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
 
@@ -289,7 +307,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       commentCountEl.textContent = message.count;
       progressBar.style.width = `${Math.min(20 + message.count * 2, 100)}%`;
       if (message.count > 0) {
+        clearZeroCommentHintTimer();
         btnExport.disabled = false;
+        scrollStatusEl.textContent = `${message.count} yorum çekildi...`;
+        scrollStatusEl.className = 'status-value success';
+      } else if (isScraping) {
+        scrollStatusEl.textContent = 'Yorum paneli açılıyor...';
+        scrollStatusEl.className = 'status-value';
       }
     }
 
@@ -314,7 +338,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnExport.disabled = true;
     scrollStatusRow.style.display = 'flex';
     scrollStatusEl.textContent = 'Yorumlar Yükleniyor...';
+    scrollStatusEl.className = 'status-value';
     progressContainer.style.display = 'block';
+    scheduleZeroCommentHint();
 
     notifyScrapingStarted();
 
@@ -332,6 +358,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnStart.style.display = 'flex';
     btnStart.textContent = 'Yorumları Çekmeye Devam Et';
     scrollStatusEl.textContent = 'Durduruldu';
+    clearZeroCommentHintTimer();
 
     stopScrapingOnTab((response) => {
       if (response) {

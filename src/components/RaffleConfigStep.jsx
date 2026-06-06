@@ -1,25 +1,30 @@
 import React from 'react';
 import {
   Settings, Upload, ListFilter, Award, Image as ImageIcon, Trash2,
-  FileText, Download, FolderOpen, Share2, ArrowRight, Megaphone,
+  FileText, Download, FolderOpen, Share2, ArrowRight, Megaphone, Save,
 } from 'lucide-react';
 import StoryBackgroundPicker from './StoryBackgroundPicker';
 import ParticipationCriteriaSection from './ParticipationCriteriaSection';
-import { CriteriaCheckbox, FormFieldHelp, RuleFiltersSection } from './rules';
+import { CriteriaCheckbox, CommentRulesSection, EntryMethodSection, FormFieldHelp } from './rules';
 import { CRITERIA_COPY } from '../constants/ruleHelpCopy';
 
-export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement }) {
+export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, onRaffleSaved }) {
   const {
     brand, setBrand, prizes, addPrize, removePrize, updatePrize,
     entryMethod, setEntryMethod, weightedEntry, setWeightedEntry,
-    keywordRequired, setKeywordRequired,
-    keywordBlacklist, setKeywordBlacklist, userBlacklist, setUserBlacklist,
     showPrizeProductsInResultsStory, setShowPrizeProductsInResultsStory,
     storyBackgroundId, setStoryBackgroundId,
-    handleImageUpload, storageWarning, configMessage,
-    generatingSetupStory, handleExportConfigTxt, handleImportConfigTxt,
+    handleImageUpload, storageWarning, configMessage, savingRaffle,
+    handleSaveRaffle, generatingSetupStory, handleExportConfigTxt, handleImportConfigTxt,
     handleGenerateSetupStory, configFileInputRef,
   } = form;
+
+  const handleSaveClick = async () => {
+    const saved = await handleSaveRaffle();
+    if (saved && onRaffleSaved) {
+      onRaffleSaved();
+    }
+  };
 
   return (
     <div className="step-page">
@@ -29,8 +34,9 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement })
         </div>
       )}
 
-      <div className="step-cards-grid">
-      <div className="glass-container step-card" style={{ padding: '24px' }}>
+      <div className="config-step-layout">
+        <div className="config-step-column config-step-column--left">
+          <div className="glass-container step-card" style={{ padding: '24px' }}>
         <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
           <Settings className="gradient-text" /> Marka ve Çekiliş Bilgileri
         </h3>
@@ -136,26 +142,45 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement })
           ))}
         </div>
       </div>
+        </div>
 
+        <div className="config-step-column config-step-column--right">
       <div className="glass-container step-card" style={{ padding: '24px' }}>
         <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <ListFilter className="gradient-text" size={20} /> Kurallar ve Filtreler
         </h3>
 
-        <RuleFiltersSection
+        <EntryMethodSection
           entryMethod={entryMethod}
           setEntryMethod={setEntryMethod}
           weightedEntry={weightedEntry}
           setWeightedEntry={setWeightedEntry}
-          keywordRequired={keywordRequired}
-          setKeywordRequired={setKeywordRequired}
-          keywordBlacklist={keywordBlacklist}
-          setKeywordBlacklist={setKeywordBlacklist}
-          userBlacklist={userBlacklist}
-          setUserBlacklist={setUserBlacklist}
         />
 
+        <div className="rule-section-divider" />
+
+        <CommentRulesSection form={form} />
+
         <ParticipationCriteriaSection form={form} />
+
+        <div className="rule-section-divider" />
+        <div className="rules-save-panel">
+          <p className="rule-section-intro">
+            Marka, ödül ve kural tanımlarınız tarayıcıda saklanır. Sonraki adıma geçmeden önce kaydedin.
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleSaveClick}
+            disabled={savingRaffle}
+            style={{ width: '100%' }}
+          >
+            <Save size={16} /> {savingRaffle ? 'Kaydediliyor...' : 'Çekilişi Kaydet'}
+          </button>
+          {configMessage && (
+            <p className="rules-save-panel__message">{configMessage}</p>
+          )}
+        </div>
       </div>
 
       <div className="glass-container step-card" style={{ padding: '24px' }}>
@@ -194,6 +219,7 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement })
           </p>
         )}
       </div>
+        </div>
       </div>
 
       <div className="step-card-full" style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>

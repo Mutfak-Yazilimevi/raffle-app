@@ -65,11 +65,60 @@ export function RuleOptionHelp({ children, whenSelected, selected = false }) {
   );
 }
 
-export function RuleSection({ title, intro, first = false, children }) {
+export function RuleVerificationBadge({ type = 'manual' }) {
+  const labels = {
+    auto: 'Otomatik kontrol',
+    manual: 'Manuel doğrulama',
+    extension: 'Eklenti ile doğrulama',
+    required: 'Temel şart',
+  };
+  return (
+    <span className={`rule-verification-badge rule-verification-badge--${type}`}>
+      {labels[type] || labels.manual}
+    </span>
+  );
+}
+
+export function RuleBaselineCard({ children }) {
+  return (
+    <div className="rule-baseline-card">
+      <div className="rule-baseline-card__header">
+        <RuleVerificationBadge type="required" />
+        <strong className="rule-baseline-card__title">Yorum yapmak</strong>
+      </div>
+      <p className="rule-baseline-card__body">{children}</p>
+    </div>
+  );
+}
+
+export function RuleGroupPanel({ badge, title, intro, children, className = '' }) {
+  return (
+    <div className={`rule-group-panel ${className}`.trim()}>
+      <div className="rule-group-panel__header">
+        {badge && <RuleVerificationBadge type={badge} />}
+        {title && <h4 className="rule-group-panel__title">{title}</h4>}
+      </div>
+      {intro && <p className="rule-section-intro">{intro}</p>}
+      {children}
+    </div>
+  );
+}
+
+export function RuleSection({ title, intro, badge, first = false, children }) {
+  if (badge || title) {
+    return (
+      <>
+        {!first && <div className="rule-section-divider" />}
+        <RuleGroupPanel badge={badge} title={title} intro={intro}>
+          {children}
+        </RuleGroupPanel>
+      </>
+    );
+  }
+
   return (
     <>
       {!first && <div className="rule-section-divider" />}
-      {title && <h4 className="rule-section-heading">{title}</h4>}
       {intro && <p className="rule-section-intro">{intro}</p>}
       {children}
     </>

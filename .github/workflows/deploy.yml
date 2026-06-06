@@ -38,6 +38,11 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          VITE_BASE_PATH: /raffle-app/
+
+      - name: Verify extension artifact
+        run: test -f dist/instagram-raffle-helper.zip
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

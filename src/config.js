@@ -1,7 +1,11 @@
+export const EXTENSION_ZIP_NAME = 'instagram-raffle-helper.zip';
+
 export const LINKS = {
   extensionGuide: 'https://github.com/mutfak-yazilimevi/raffle-app/tree/main/chrome-extension',
   extensionDownloadFallback:
-    'https://raw.githubusercontent.com/mutfak-yazilimevi/raffle-app/main/public/instagram-raffle-helper.zip',
+    'https://cdn.jsdelivr.net/gh/mutfak-yazilimevi/raffle-app@main/public/instagram-raffle-helper.zip',
+  extensionDownloadFallbackRaw:
+    'https://github.com/mutfak-yazilimevi/raffle-app/raw/main/public/instagram-raffle-helper.zip',
   instagram: 'https://www.instagram.com/',
   github: 'https://github.com/mutfak-yazilimevi/raffle-app',
   app: 'https://mutfak-yazilimevi.github.io/raffle-app/',
@@ -15,23 +19,27 @@ export function resolveInstagramUrl(postUrl) {
   return `https://${trimmed}`;
 }
 
-function getPageDirectory() {
-  const path = window.location.pathname;
-  if (path.endsWith('/')) return path;
+/** Eklenti ZIP indirme adresleri (sırayla denenir). */
+export function getExtensionDownloadUrls() {
+  const urls = [];
 
-  const lastSlash = path.lastIndexOf('/');
-  const lastSegment = path.slice(lastSlash + 1);
-  if (lastSegment.includes('.')) {
-    return path.slice(0, lastSlash + 1);
+  if (typeof window !== 'undefined') {
+    try {
+      const base = import.meta.env.BASE_URL || './';
+      urls.push(new URL(`${base}${EXTENSION_ZIP_NAME}`, window.location.href).href);
+    } catch (_) {
+      /* ignore */
+    }
   }
-  return `${path}/`;
+
+  urls.push(`${LINKS.app}${EXTENSION_ZIP_NAME}`);
+  urls.push(LINKS.extensionDownloadFallback);
+  urls.push(LINKS.extensionDownloadFallbackRaw);
+
+  return [...new Set(urls)];
 }
 
-/** Mevcut sayfa konumuna göre eklenti ZIP yolunu üretir. */
+/** @deprecated getExtensionDownloadUrls kullanın */
 export function getExtensionDownloadUrl() {
-  const base = import.meta.env.BASE_URL || './';
-  return new URL(
-    `${base}instagram-raffle-helper.zip`,
-    `${window.location.origin}${getPageDirectory()}`
-  ).href;
+  return getExtensionDownloadUrls()[0];
 }

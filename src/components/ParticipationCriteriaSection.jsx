@@ -1,9 +1,8 @@
 import React from 'react';
-import { CRITERIA_COPY, PARTICIPATION_INTRO, SECTION_COPY } from '../constants/ruleHelpCopy';
+import { CRITERIA_COPY, SECTION_COPY } from '../constants/ruleHelpCopy';
 import {
   CriteriaCheckbox,
   FormFieldHelp,
-  MentionRulePanel,
   RuleNumberField,
   RuleSection,
 } from './rules';
@@ -29,8 +28,6 @@ export default function ParticipationCriteriaSection({ form }) {
     requireFollowAccounts, setRequireFollowAccounts,
     requiredFollowAccounts, setRequiredFollowAccounts,
     followAccountList,
-    requireMentionRule, setRequireMentionRule,
-    minMentions, setMinMentions,
     maxCommentsPerUser, setMaxCommentsPerUser,
     allowMultipleCommentsBonus, setAllowMultipleCommentsBonus,
     setEntryMethod,
@@ -42,21 +39,25 @@ export default function ParticipationCriteriaSection({ form }) {
     disallowBusinessAccounts, setDisallowBusinessAccounts,
   } = form;
 
-  const handleMentionRuleToggle = (checked) => {
-    setRequireMentionRule(checked);
-    if (checked && minMentions === 0) {
-      setMinMentions(1);
-    }
-  };
+  const postSection = SECTION_COPY.postInteraction;
+  const accountSection = SECTION_COPY.account;
 
   return (
     <>
-      <p className="rule-section-intro">{PARTICIPATION_INTRO}</p>
-
-      <RuleSection title={SECTION_COPY.basic.title} intro={SECTION_COPY.basic.intro}>
+      <RuleSection
+        badge={postSection.badge}
+        title={postSection.title}
+        intro={postSection.intro}
+      >
         <CriteriaFromCopy id="requireLike" checked={requireLike} onChange={setRequireLike} />
         <CriteriaFromCopy id="requireSave" checked={requireSave} onChange={setRequireSave} />
+      </RuleSection>
 
+      <RuleSection
+        badge={accountSection.badge}
+        title={accountSection.title}
+        intro={accountSection.intro}
+      >
         <CriteriaFromCopy
           id="requireFollowAccounts"
           checked={requireFollowAccounts}
@@ -65,8 +66,8 @@ export default function ParticipationCriteriaSection({ form }) {
         {requireFollowAccounts && (
           <div className="form-group rule-nested-panel">
             <label className="form-label">Takip edilmesi gereken hesaplar</label>
-            <FormFieldHelp whenActive="Her satırdaki @kullaniciadi için takip şartı uygulanır. Virgül veya satır sonu ile ayırın. Eklenti «Takip Şartlarını Doğrula» ile profiller kontrol edilir.">
-              Katılımcıların takip etmesi gereken marka veya sponsor hesapları.
+            <FormFieldHelp whenActive="Her @kullaniciadi için takip şartı uygulanır. Eklenti «Takip Şartlarını Doğrula» ile kontrol edilir; eksik takip edenler havuzdan düşer.">
+              Virgül veya satır sonu ile ayırın.
             </FormFieldHelp>
             <input
               type="text"
@@ -76,25 +77,18 @@ export default function ParticipationCriteriaSection({ form }) {
               onChange={(e) => setRequiredFollowAccounts(e.target.value)}
             />
             {followAccountList.length > 0 && (
-              <FormFieldHelp whenActive={`${followAccountList.length} hesap tanımlandı; eksik takip edenler (doğrulama yapıldıysa) çekiliş dışı kalır.`}>
+              <FormFieldHelp whenActive={`${followAccountList.length} hesap tanımlandı.`}>
                 Tanınan hesap sayısı: {followAccountList.length}
               </FormFieldHelp>
             )}
           </div>
         )}
-
-        <CriteriaCheckbox
-          id="requireMentionRule"
-          checked={requireMentionRule}
-          onChange={handleMentionRuleToggle}
-          label={CRITERIA_COPY.requireMentionRule.label}
-          description={CRITERIA_COPY.requireMentionRule.description}
-          whenEnabled={CRITERIA_COPY.requireMentionRule.whenEnabled}
-        />
-        {requireMentionRule && <MentionRulePanel form={form} />}
       </RuleSection>
 
-      <RuleSection title={SECTION_COPY.multiEntry.title} intro={SECTION_COPY.multiEntry.intro}>
+      <RuleSection
+        title={SECTION_COPY.multiEntry.title}
+        intro={SECTION_COPY.multiEntry.intro}
+      >
         <CriteriaCheckbox
           id="allowMultipleCommentsBonus"
           checked={allowMultipleCommentsBonus}
@@ -108,9 +102,9 @@ export default function ParticipationCriteriaSection({ form }) {
         />
         <RuleNumberField
           label="Kişi başına maksimum yorum"
-          help="Spam veya çoklu yorumla haksız avantajı sınırlamak için. 0 bırakılırsa tüm yorumlar değerlendirilir."
+          help="0 bırakılırsa tüm yorumlar değerlendirilir."
           whenActive={maxCommentsPerUser > 0
-            ? `Bir kullanıcının ilk ${maxCommentsPerUser} yorumu dikkate alınır; sonrakiler bilet hesabına katılmaz. 0 = sınırsız.`
+            ? `Bir kullanıcının ilk ${maxCommentsPerUser} yorumu dikkate alınır; sonrakiler bilet hesabına katılmaz.`
             : undefined}
           className="form-group--flush"
           type="number"
@@ -121,7 +115,11 @@ export default function ParticipationCriteriaSection({ form }) {
         />
       </RuleSection>
 
-      <RuleSection title={SECTION_COPY.story.title} intro={SECTION_COPY.story.intro}>
+      <RuleSection
+        badge={SECTION_COPY.story.badge}
+        title={SECTION_COPY.story.title}
+        intro={SECTION_COPY.story.intro}
+      >
         <CriteriaFromCopy id="requireStoryShare" checked={requireStoryShare} onChange={setRequireStoryShare} />
         <CriteriaFromCopy
           id="requireStoryProofIfPrivate"
@@ -130,13 +128,17 @@ export default function ParticipationCriteriaSection({ form }) {
         />
       </RuleSection>
 
-      <RuleSection title={SECTION_COPY.legal.title} intro={SECTION_COPY.legal.intro}>
+      <RuleSection
+        badge={SECTION_COPY.legal.badge}
+        title={SECTION_COPY.legal.title}
+        intro={SECTION_COPY.legal.intro}
+      >
         <CriteriaFromCopy id="requireMinAge" checked={requireMinAge} onChange={setRequireMinAge} />
         {requireMinAge && (
           <RuleNumberField
             label="Minimum yaş"
-            help="Varsayılan 18. Ödül türüne göre 16 veya 21 gibi değerler de girebilirsiniz."
-            whenActive={`Katılımcıların en az ${minAge} yaşında olması beklentisi duyurulur; yasal gereklilik ödüle göre değişebilir.`}
+            help="Varsayılan 18."
+            whenActive={`En az ${minAge} yaş beklentisi duyurulur.`}
             className="rule-nested-panel"
             type="number"
             min="1"

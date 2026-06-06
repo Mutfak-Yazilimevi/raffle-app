@@ -327,6 +327,7 @@ export default function App() {
             form={form}
             onNext={() => setRaffleStep('comments')}
             onBackToAnnouncement={goToAnnouncement}
+            onRaffleSaved={refreshRaffleList}
           />
         )}
 

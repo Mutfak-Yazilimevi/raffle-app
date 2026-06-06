@@ -1,4 +1,4 @@
-import { LINKS, getExtensionDownloadUrl } from '../config';
+import { getExtensionDownloadUrls } from '../config';
 
 const DOWNLOAD_FILENAME = 'instagram-raffle-helper.zip';
 
@@ -26,10 +26,10 @@ async function fetchAsBlob(url) {
  * Önce sitedeki ZIP'i dener, bulunamazsa GitHub yedek adresine düşer.
  */
 export async function downloadChromeExtension() {
-  const sources = [
-    { url: getExtensionDownloadUrl(), label: 'site' },
-    { url: LINKS.extensionDownloadFallback, label: 'github' },
-  ];
+  const sources = getExtensionDownloadUrls().map((url, index) => ({
+    url,
+    label: index === 0 ? 'site' : `fallback-${index}`,
+  }));
 
   let lastError = null;
 

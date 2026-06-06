@@ -1,8 +1,20 @@
 import { resolveStoryTheme } from './storyBackgrounds';
-import { STORY_ATTRIBUTION } from './appBranding';
+import { APP_TAGLINE, STORY_ATTRIBUTION } from './appBranding';
 
 export const STORY_WIDTH = 1080;
 export const STORY_HEIGHT = 1920;
+
+const INSTA_GRADIENT_STOPS = [
+  [0, '#f91f79'],
+  [0.5, '#b92b97'],
+  [1, '#773cb5'],
+];
+
+function createInstaGradient(ctx, x0, y0, x1, y1) {
+  const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+  INSTA_GRADIENT_STOPS.forEach(([stop, color]) => grad.addColorStop(stop, color));
+  return grad;
+}
 
 export function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -150,12 +162,103 @@ export async function drawStoryBrandHeader(ctx, brand, p, startY = 130, options 
   return y + bottomGap;
 }
 
-/** Story görsellerinin altına marka ifadesi ekler */
+function drawAwardMark(ctx, cx, cy, size) {
+  const scale = size / 24;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  ctx.beginPath();
+  ctx.moveTo(-7, -6);
+  ctx.lineTo(7, -6);
+  ctx.lineTo(5, 5);
+  ctx.quadraticCurveTo(0, 9, -5, 5);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(-9, -2, 3.2, Math.PI * 0.5, Math.PI * 1.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(9, -2, 3.2, -Math.PI * 0.5, Math.PI * 0.5);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(-3, 9);
+  ctx.lineTo(-3, 11);
+  ctx.lineTo(3, 11);
+  ctx.lineTo(3, 9);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+/** Story alt bilgisinde MutfakRaffleStudio logosu (uygulama başlığı ile aynı stil) */
+export function drawStoryAppLogo(ctx, p, centerX, baseY, options = {}) {
+  const { scale = 1, showTagline = false } = options;
+  const iconSize = 42 * scale;
+  const gap = 12 * scale;
+  const nameSize = 24 * scale;
+  const taglineSize = 12 * scale;
+
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+
+  ctx.font = `800 ${nameSize}px Outfit, Inter, sans-serif`;
+  const mutfakWidth = ctx.measureText('Mutfak').width;
+  const raffleWidth = ctx.measureText('RaffleStudio').width;
+  const wordmarkWidth = mutfakWidth + raffleWidth;
+  const totalWidth = iconSize + gap + wordmarkWidth;
+  const startX = centerX - totalWidth / 2;
+  const iconY = baseY - iconSize;
+  const textY = baseY - iconSize / 2;
+
+  const iconGrad = createInstaGradient(ctx, startX, iconY, startX + iconSize, iconY + iconSize);
+  ctx.fillStyle = iconGrad;
+  ctx.beginPath();
+  drawRoundRect(ctx, startX, iconY, iconSize, iconSize, 11 * scale);
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#ffffff';
+  drawAwardMark(ctx, startX + iconSize / 2, iconY + iconSize / 2, iconSize * 0.52);
+
+  let textX = startX + iconSize + gap;
+  ctx.fillStyle = p.textSecondary;
+  ctx.fillText('Mutfak', textX, textY);
+  textX += mutfakWidth;
+
+  ctx.fillStyle = createInstaGradient(ctx, textX, textY - nameSize / 2, textX + raffleWidth, textY + nameSize / 2);
+  ctx.fillText('RaffleStudio', textX, textY);
+
+  if (showTagline) {
+    ctx.textAlign = 'center';
+    ctx.font = `500 ${taglineSize}px Inter, sans-serif`;
+    ctx.fillStyle = p.textFaint;
+    ctx.fillText(APP_TAGLINE, centerX, baseY + 10 * scale);
+  }
+
+  ctx.restore();
+
+  return iconSize + (showTagline ? 18 * scale : 0);
+}
+
+/** Story görsellerinin altına logo + marka ifadesi ekler */
 export function drawStoryAttribution(ctx, p, baseY = 1770) {
-  ctx.textAlign = 'center';
-  ctx.fillStyle = p.textFaint;
   ctx.font = '500 22px Inter';
+  ctx.textAlign = 'center';
   const lines = wrapText(ctx, STORY_ATTRIBUTION, 860);
+  const textBlockHeight = lines.length * 30;
+  const logoGap = 16;
+  const logoBaseY = baseY - textBlockHeight - logoGap;
+
+  drawStoryAppLogo(ctx, p, STORY_WIDTH / 2, logoBaseY, { scale: 1.02 });
+
+  ctx.fillStyle = p.textFaint;
   let y = baseY - (lines.length - 1) * 30;
   for (const line of lines) {
     ctx.fillText(line, STORY_WIDTH / 2, y);

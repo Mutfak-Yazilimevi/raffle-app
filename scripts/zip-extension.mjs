@@ -29,5 +29,6 @@ try {
   }
   console.log(`Extension packaged: ${zipPath}`);
 } catch (err) {
-  console.warn('Extension zip could not be created:', err.message);
+  console.error('Extension zip could not be created:', err.message);
+  process.exit(1);
 }
