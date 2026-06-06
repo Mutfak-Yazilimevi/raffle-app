@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    :root {
+      --gradient-bg: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
+      --dark-bg: #121214;
+      --card-bg: rgba(255, 255, 255, 0.05);
+      --border-color: rgba(255, 255, 255, 0.1);
+      --text-color: #f3f4f6;
+      --text-muted: #9ca3af;
+      --primary: #e1306c;
+      --primary-hover: #c13584;
+    }
+
+    body {
+      width: 320px;
+      font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--dark-bg);
+      color: var(--text-color);
+      margin: 0;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 12px;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      margin: 0;
+      font-weight: 700;
+      background: var(--gradient-bg);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header span {
+      font-size: 20px;
+    }
+
+    .status-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .status-label {
+      color: var(--text-muted);
+    }
+
+    .status-value {
+      font-weight: 600;
+    }
+
+    .status-value.success {
+      color: #10b981;
+    }
+
+    .status-value.error {
+      color: #ef4444;
+    }
+
+    .progress-bar-container {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      height: 6px;
+      width: 100%;
+      overflow: hidden;
+      display: none;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--gradient-bg);
+      transition: width 0.3s ease;
+    }
+
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 14px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--gradient-bg);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(225, 48, 108, 0.3);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-success {
+      background: #10b981;
+      color: white;
+    }
+
+    .btn-success:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    }
+
+    .info-text {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <span>🎉</span>
+      <h1>Instagram Çekiliş Yardımcısı</h1>
+    </div>
+
+    <div class="status-card">
+      <div class="status-row">
+        <span class="status-label">Sayfa Durumu:</span>
+        <span id="page-status" class="status-value error">Bekleniyor...</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Çekilen Yorum:</span>
+        <span id="comment-count" class="status-value">0</span>
+      </div>
+      <div class="status-row" id="scroll-status-row" style="display: none;">
+        <span class="status-label">İşlem:</span>
+        <span id="scroll-status" class="status-value">Hazır</span>
+      </div>
+      <div class="progress-bar-container" id="progress-container">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button id="btn-start" class="btn-primary" disabled>Yorumları Çekmeye Başla</button>
+      <button id="btn-stop" class="btn-secondary" style="display: none;">Durdur</button>
+      <button id="btn-export" class="btn-success" disabled>Çekilişe Gönder 🚀</button>
+    </div>
+
+    <p class="info-text">Not: Çekiliş gönderi sayfasına gidip eklentiyi çalıştırın. Eklenti yorumları otomatik yükleyecektir.</p>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

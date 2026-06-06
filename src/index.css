@@ -1,0 +1,296 @@
+/* index.css - Tasarım Sistemi ve Temalar */
+:root {
+  --font-title: 'Outfit', 'Inter', -apple-system, sans-serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+
+  /* Instagram Renk Grasyonu */
+  --insta-gradient: linear-gradient(135deg, #f91f79, #b92b97, #773cb5);
+  --insta-yellow: #fccc63;
+  --insta-orange: #fbad50;
+  --insta-pink: #e1306c;
+  --insta-purple: #833ab4;
+  --insta-blue: #405de6;
+
+  /* Premium Dark Mode Glassmorphism Paleti */
+  --bg-dark: #0a0a0c;
+  --bg-dark-rgb: 10, 10, 12;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-bg-hover: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-focus: rgba(225, 48, 108, 0.4);
+  
+  --shadow-neon: 0 8px 32px 0 rgba(131, 58, 180, 0.2);
+  --shadow-neon-pink: 0 8px 32px 0 rgba(225, 48, 108, 0.35);
+  --shadow-neon-green: 0 8px 32px 0 rgba(16, 185, 129, 0.3);
+}
+
+/* Base Styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(131, 58, 180, 0.15) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(249, 31, 121, 0.12) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(64, 93, 230, 0.05) 0%, transparent 60%);
+  background-attachment: fixed;
+}
+
+/* Glassmorphism Containers */
+.glass-container {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow-neon);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-container:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 40px 0 rgba(131, 58, 180, 0.25);
+}
+
+/* Inputs & Form Controls */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.form-label {
+  font-family: var(--font-title);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: 0.5px;
+}
+
+.form-input, .form-textarea {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: var(--text-main);
+  padding: 12px 16px;
+  font-family: inherit;
+  font-size: 15px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.form-input:focus, .form-textarea:focus {
+  border-color: rgba(225, 48, 108, 0.6);
+  box-shadow: 0 0 0 3px rgba(225, 48, 108, 0.15);
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+/* Buttons */
+.btn {
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  outline: none;
+}
+
+.btn-primary {
+  background: var(--insta-gradient);
+  color: white;
+  box-shadow: 0 4px 20px rgba(225, 48, 108, 0.3);
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-neon-pink);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  border: 1px solid var(--glass-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+}
+
+.btn-success:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-neon-green);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Typography Utilities */
+.gradient-text {
+  background: var(--insta-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Keyframe Animations */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(225, 48, 108, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(225, 48, 108, 0.6);
+  }
+}
+
+.pulse-glow {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+
+/* Slot Machine / Name Scroll Wheel */
+.slot-machine-container {
+  position: relative;
+  height: 120px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.4);
+  border: 2px solid var(--glass-border);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 4px 20px rgba(0, 0, 0, 0.8);
+}
+
+.slot-machine-container::before,
+.slot-machine-container::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 35px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.slot-machine-container::before {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(10, 10, 12, 0.9), transparent);
+}
+
+.slot-machine-container::after {
+  bottom: 0;
+  background: linear-gradient(to top, rgba(10, 10, 12, 0.9), transparent);
+}
+
+.slot-indicator {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  height: 48px;
+  border-top: 2px dashed rgba(225, 48, 108, 0.5);
+  border-bottom: 2px dashed rgba(225, 48, 108, 0.5);
+  background: rgba(225, 48, 108, 0.05);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform 0.1s linear;
+  will-change: transform;
+}
+
+.slot-item {
+  height: 48px;
+  line-height: 48px;
+  font-family: var(--font-title);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slot-item.active {
+  color: var(--insta-orange);
+  text-shadow: 0 0 10px rgba(251, 173, 80, 0.5);
+}
+
+/* Confetti overlay */
+.confetti-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9999;
+}

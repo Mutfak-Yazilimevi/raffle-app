@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Instagram Raffle Helper",
+  "version": "1.0.0",
+  "description": "Instagram postlarındaki yorumları çekerek Çekiliş Uygulamasına aktarır.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.instagram.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
