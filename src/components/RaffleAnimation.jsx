@@ -329,7 +329,7 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
       </div>
 
       {/* YAN PANEL: CANLI ÇEKİLİŞ DURUMU */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
         
         {/* Asil Listesi */}
         <div className="glass-container" style={{ padding: '16px' }}>

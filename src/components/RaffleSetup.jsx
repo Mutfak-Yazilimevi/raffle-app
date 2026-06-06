@@ -38,6 +38,40 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
   const [keywordBlacklist, setKeywordBlacklist] = useState('');
   const [userBlacklist, setUserBlacklist] = useState('');
 
+  // Local storage'dan kayitli veriyi yukle
+  useEffect(() => {
+    const savedData = localStorage.getItem('raffle_setup_state');
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        if (parsed.rawText) setRawText(parsed.rawText);
+        if (parsed.comments) setComments(parsed.comments);
+        if (parsed.winnerCount) setWinnerCount(parsed.winnerCount);
+        if (parsed.substituteCount !== undefined) setSubstituteCount(parsed.substituteCount);
+        if (parsed.entryMethod) setEntryMethod(parsed.entryMethod);
+        if (parsed.minMentions !== undefined) setMinMentions(parsed.minMentions);
+        if (parsed.mentionMode) setMentionMode(parsed.mentionMode);
+        if (parsed.weightedEntry !== undefined) setWeightedEntry(parsed.weightedEntry);
+        if (parsed.uniqueMentions !== undefined) setUniqueMentions(parsed.uniqueMentions);
+        if (parsed.keywordRequired !== undefined) setKeywordRequired(parsed.keywordRequired);
+        if (parsed.keywordBlacklist !== undefined) setKeywordBlacklist(parsed.keywordBlacklist);
+        if (parsed.userBlacklist !== undefined) setUserBlacklist(parsed.userBlacklist);
+      } catch (e) {
+        console.error('Error parsing local storage data', e);
+      }
+    }
+  }, []);
+
+  // Form degisikliklerini local storage'a kaydet
+  useEffect(() => {
+    const stateToSave = {
+      rawText, comments, winnerCount, substituteCount,
+      entryMethod, minMentions, mentionMode, weightedEntry,
+      uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist
+    };
+    localStorage.setItem('raffle_setup_state', JSON.stringify(stateToSave));
+  }, [rawText, comments, winnerCount, substituteCount, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist]);
+
   // Eklentiden gelen veriyi yükle
   useEffect(() => {
     if (importedComments && importedComments.length > 0) {
@@ -592,7 +626,7 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
       <div className="glass-container" style={{ padding: '24px', display: 'flex', flexDirection: 'column', mdDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: '20px' }}>
         
         {/* İstatistikler */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', width: '100%', textAlign: 'center' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '16px', width: '100%', textAlign: 'center' }}>
           <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
             <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Toplam Yorum</span>
             <strong style={{ fontSize: '20px', fontFamily: 'var(--font-title)', fontWeight: 800 }}>{comments.length}</strong>
