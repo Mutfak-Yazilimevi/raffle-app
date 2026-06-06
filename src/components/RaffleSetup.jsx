@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Upload, Users, ListFilter, Play, Info, Trash2, CheckCircle, Award, Image as ImageIcon, Puzzle, Download, ExternalLink } from 'lucide-react';
 import { LINKS } from '../config';
+import { downloadChromeExtension } from '../utils/downloadExtension';
+import { loadSetupState, saveSetupState } from '../utils/setupStorage';
 
 const MOCK_COMMENTS_PRESET = [
   { username: 'ahmet_yılmaz', text: 'Harika bir çekiliş! Katılıyorum @merve_kaya @can_demir @elif_sahin' },
@@ -40,49 +42,88 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
   const [keywordRequired, setKeywordRequired] = useState('');
   const [keywordBlacklist, setKeywordBlacklist] = useState('');
   const [userBlacklist, setUserBlacklist] = useState('');
+  const [extensionDownloading, setExtensionDownloading] = useState(false);
+  const [storageWarning, setStorageWarning] = useState('');
+
+  const handleExtensionDownload = async () => {
+    setExtensionDownloading(true);
+    try {
+      const result = await downloadChromeExtension();
+      if (!result.ok) {
+        alert(
+          'Eklenti dosyası şu an indirilemedi. Lütfen GitHub kurulum rehberinden manuel indirmeyi deneyin veya sayfayı yenileyip tekrar deneyin.'
+        );
+        window.open(LINKS.extensionGuide, '_blank', 'noopener,noreferrer');
+      }
+    } finally {
+      setExtensionDownloading(false);
+    }
+  };
 
   // Local storage'dan kayitli veriyi yukle
   useEffect(() => {
-    const savedData = localStorage.getItem('raffle_setup_state');
-    if (savedData) {
-      try {
-        const parsed = JSON.parse(savedData);
-        if (parsed.rawText) setRawText(parsed.rawText);
-        if (parsed.comments) setComments(parsed.comments);
-        if (parsed.brand) setBrand(parsed.brand);
-        if (parsed.prizes) setPrizes(parsed.prizes);
-        if (parsed.entryMethod) setEntryMethod(parsed.entryMethod);
-        if (parsed.minMentions != null) setMinMentions(parsed.minMentions);
-        if (parsed.mentionMode) setMentionMode(parsed.mentionMode);
-        if (parsed.weightedEntry != null) setWeightedEntry(parsed.weightedEntry);
-        if (parsed.uniqueMentions != null) setUniqueMentions(parsed.uniqueMentions);
-        if (parsed.keywordRequired) setKeywordRequired(parsed.keywordRequired);
-        if (parsed.keywordBlacklist) setKeywordBlacklist(parsed.keywordBlacklist);
-        if (parsed.userBlacklist) setUserBlacklist(parsed.userBlacklist);
-      } catch (e) {
-        console.error('Error parsing local storage data', e);
-      }
-    }
+    loadSetupState().then((saved) => {
+      if (!saved) return;
+      if (saved.rawText) setRawText(saved.rawText);
+      if (saved.comments) setComments(saved.comments);
+      if (saved.brand) setBrand(saved.brand);
+      if (saved.prizes) setPrizes(saved.prizes);
+      if (saved.entryMethod) setEntryMethod(saved.entryMethod);
+      if (saved.minMentions != null) setMinMentions(saved.minMentions);
+      if (saved.mentionMode) setMentionMode(saved.mentionMode);
+      if (saved.weightedEntry != null) setWeightedEntry(saved.weightedEntry);
+      if (saved.uniqueMentions != null) setUniqueMentions(saved.uniqueMentions);
+      if (saved.keywordRequired) setKeywordRequired(saved.keywordRequired);
+      if (saved.keywordBlacklist) setKeywordBlacklist(saved.keywordBlacklist);
+      if (saved.userBlacklist) setUserBlacklist(saved.userBlacklist);
+    });
   }, []);
 
-  // Form degisikliklerini local storage'a kaydet
+  // Form degisikliklerini kaydet (resimler IndexedDB'de, metin localStorage'da)
   useEffect(() => {
-    const stateToSave = {
-      rawText, comments, brand, prizes,
-      entryMethod, minMentions, mentionMode, weightedEntry,
-      uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist
-    };
-    localStorage.setItem('raffle_setup_state', JSON.stringify(stateToSave));
+    const timeoutId = window.setTimeout(() => {
+      saveSetupState({
+        rawText, comments, brand, prizes,
+        entryMethod, minMentions, mentionMode, weightedEntry,
+        uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
+      }).then((saved) => {
+        setStorageWarning(saved ? '' : 'Tarayıcı depolama alanı dolu olabilir; ayarlar tam kaydedilemedi.');
+      });
+    }, 400);
+
+    return () => window.clearTimeout(timeoutId);
   }, [rawText, comments, brand, prizes, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist]);
 
   const handleImageUpload = (e, callback) => {
     const file = e.target.files[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = (event) => {
-      callback(event.target.result);
+      const img = new Image();
+      img.onload = () => {
+        const maxSize = 800;
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = Math.round((height / width) * maxSize);
+            width = maxSize;
+          } else {
+            width = Math.round((width / height) * maxSize);
+            height = maxSize;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        callback(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = () => callback(event.target.result);
+      img.src = event.target.result;
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const addPrize = () => {
@@ -423,6 +464,13 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', width: '100%', maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
       
+      {/* Depolama uyarısı */}
+      {storageWarning && (
+        <div className="glass-container" style={{ padding: '12px 16px', background: 'rgba(251, 173, 80, 0.1)', borderColor: 'rgba(251, 173, 80, 0.3)', borderRadius: '12px', fontSize: '13px', color: 'var(--insta-orange)' }}>
+          {storageWarning}
+        </div>
+      )}
+
       {/* Chrome Eklentisi Kurulum Rehberi */}
       {(!importedComments || importedComments.length === 0) && comments.length === 0 && (
         <div className="glass-container" style={{ padding: '20px 24px', background: 'rgba(64, 93, 230, 0.08)', borderColor: 'rgba(64, 93, 230, 0.25)', borderRadius: '16px' }}>
@@ -457,14 +505,15 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
             </ol>
 
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <a
-                href={LINKS.extensionDownload}
-                download="instagram-raffle-helper.zip"
+              <button
+                type="button"
                 className="btn btn-primary"
-                style={{ padding: '10px 18px', fontSize: '13px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                style={{ padding: '10px 18px', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                onClick={handleExtensionDownload}
+                disabled={extensionDownloading}
               >
-                <Download size={16} /> Chrome Eklentisini İndir
-              </a>
+                <Download size={16} /> {extensionDownloading ? 'İndiriliyor...' : 'Chrome Eklentisini İndir'}
+              </button>
               <a
                 href={LINKS.extensionGuide}
                 target="_blank"
