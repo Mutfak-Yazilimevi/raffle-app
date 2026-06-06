@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Users, Upload, Trash2, CheckCircle, Info, Play, Share2, ArrowLeft, Puzzle, ExternalLink,
+  Users, Upload, Trash2, CheckCircle, Info, Play, Share2, ArrowLeft, Puzzle, ExternalLink, ListOrdered, UserCheck,
 } from 'lucide-react';
 
 export default function RaffleCommentsStep({
@@ -12,16 +12,18 @@ export default function RaffleCommentsStep({
 }) {
   const {
     rawText, comments, handleTextChange, handleCSVUpload, loadDemoData, clearData,
-    prizes, ticketsPool, uniqueParticipantsCount,
+    prizes, ticketsPool, uniqueParticipantsCount, participantStats, filteredOutCount,
     configMessage, generatingStartingStory, handleGenerateStartingStory,
+    followRuleActive, followAccountList, effectiveMinRequiredFollows,
+    followVerifyMessage, followVerifyPending, handlePrepareFollowVerification,
   } = form;
 
   const uniqueCommentUsers = new Set(comments.map((c) => c.username.toLowerCase())).size;
 
   return (
-    <div style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div className="step-page">
       {importedCount > 0 && (
-        <div className="glass-container" style={{ padding: '16px 20px', background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '16px' }}>
+        <div className="glass-container step-card-full" style={{ padding: '16px 20px', background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <CheckCircle color="#10b981" size={24} />
             <div>
@@ -34,7 +36,7 @@ export default function RaffleCommentsStep({
       )}
 
       {comments.length === 0 && importedCount === 0 && (
-        <div className="glass-container" style={{ padding: '20px 24px', background: 'rgba(64, 93, 230, 0.08)', borderColor: 'rgba(64, 93, 230, 0.25)', borderRadius: '16px' }}>
+        <div className="glass-container step-card-full" style={{ padding: '20px 24px', background: 'rgba(64, 93, 230, 0.08)', borderColor: 'rgba(64, 93, 230, 0.25)', borderRadius: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '16px' }}>
             <div style={{ background: 'var(--insta-gradient)', padding: '10px', borderRadius: '12px', flexShrink: 0 }}>
               <Puzzle size={22} color="white" />
@@ -55,70 +57,198 @@ export default function RaffleCommentsStep({
         </div>
       )}
 
-      <div className="glass-container" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Users className="gradient-text" /> Yorumları Yükle
-          </h3>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={loadDemoData}>Demo Yükle</button>
+      {followRuleActive && comments.length > 0 && (
+        <div className="glass-container step-card-full" style={{ padding: '20px 24px', background: 'rgba(64, 93, 230, 0.06)', borderColor: 'rgba(64, 93, 230, 0.2)', borderRadius: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '240px' }}>
+              <h4 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: 700, color: 'var(--insta-blue)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <UserCheck size={18} /> Takip Şartı Doğrulama
+              </h4>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                {followAccountList.map((a) => `@${a}`).join(', ')} listesinden en az <strong>{effectiveMinRequiredFollows}</strong> hesabın takip edilmesi gerekiyor.
+                Chrome eklentisi katılımcı profillerini gezerek takip listesini kontrol eder.
+              </p>
+              {followVerifyMessage && (
+                <p style={{ margin: '10px 0 0', fontSize: '12px', color: 'var(--insta-orange)' }}>{followVerifyMessage}</p>
+              )}
+            </div>
+            <button type="button" className="btn btn-primary" style={{ flexShrink: 0 }} onClick={handlePrepareFollowVerification}>
+              <UserCheck size={16} /> Eklenti ile Doğrula
+            </button>
+          </div>
+          {followVerifyPending && (
+            <p style={{ margin: '12px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+              Eklenti simgesine tıklayın → <strong>Takip Şartlarını Doğrula</strong>. Instagram&apos;a giriş yapmış olmanız gerekir; gizli profillerde liste görünmeyebilir.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="step-cards-grid">
+        <div className="glass-container step-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Users className="gradient-text" /> Yorumları Yükle
+            </h3>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={loadDemoData}>Demo Yükle</button>
+              {comments.length > 0 && (
+                <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={clearData}>
+                  <Trash2 size={14} /> Temizle
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="form-group" style={{ flexGrow: 1 }}>
+            <textarea
+              className="form-textarea"
+              style={{ flexGrow: 1, minHeight: comments.length > 0 ? '160px' : '280px', fontSize: '13px', lineHeight: '1.6', width: '100%' }}
+              placeholder={comments.length > 0
+                ? 'Ek yorum yapıştırabilir veya dosya yükleyebilirsiniz. Katılımcı özeti sağda.'
+                : `Örnek Format 1 (Instagram kopyala-yapıştır):\nkullanici_adi\nHarika çekiliş! @arkadas1 @arkadas2\n\nÖrnek Format 2:\nkullanici_adi: Katılıyorum @arkadas`}
+              value={rawText}
+              onChange={handleTextChange}
+            />
+          </div>
+
+          <div style={{ border: '2px dashed var(--glass-border)', borderRadius: '12px', padding: '16px', textAlign: 'center', cursor: 'pointer', position: 'relative', background: 'var(--bg-inset)', marginTop: '16px' }}>
+            <input type="file" accept=".csv,.txt" onChange={handleCSVUpload} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} />
+            <Upload size={20} style={{ margin: '0 auto 8px', color: 'var(--insta-pink)' }} />
+            <p style={{ fontSize: '13px', margin: 0, fontWeight: 500 }}>CSV veya TXT Dosyası Sürükleyin veya Seçin</p>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Sütunlar: username, comment formatında olmalıdır</span>
+          </div>
+        </div>
+
+        <div className="glass-container step-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+              <ListOrdered className="gradient-text" size={20} /> Katılımcı Özeti
+            </h3>
             {comments.length > 0 && (
-              <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={clearData}>
-                <Trash2 size={14} /> Temizle
-              </button>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                {comments.length} yorum · {participantStats.length} kişi
+                {filteredOutCount > 0 && ` · ${filteredOutCount} kişi kurallara takıldı`}
+              </span>
             )}
           </div>
+
+          {comments.length === 0 ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: '14px', lineHeight: 1.7, border: '1px dashed var(--glass-border)', borderRadius: '12px', background: 'var(--bg-muted)' }}>
+              Yorum yüklediğinizde katılımcılar, yorum sayıları ve çekiliş hakları burada listelenir.
+            </div>
+          ) : (
+            <>
+              <div style={{ overflow: 'auto', flex: 1, maxHeight: '420px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                    <tr style={{ background: 'var(--bg-table-head)', textAlign: 'left' }}>
+                      <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, width: '48px' }}>#</th>
+                      <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600 }}>Kullanıcı</th>
+                      <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>Yorum</th>
+                      <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>Hak</th>
+                      {followRuleActive && (
+                        <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>Takip</th>
+                      )}
+                      <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>Durum</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {participantStats.map((person, index) => {
+                      const eligible = person.ticketCount > 0;
+                      const follow = person.followStatus || { status: 'na', label: '—' };
+                      const followColors = {
+                        passed: { bg: 'rgba(16, 185, 129, 0.12)', color: '#10b981', border: 'rgba(16, 185, 129, 0.3)' },
+                        failed: { bg: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'rgba(239, 68, 68, 0.25)' },
+                        pending: { bg: 'rgba(251, 173, 80, 0.12)', color: 'var(--insta-orange)', border: 'rgba(251, 173, 80, 0.3)' },
+                        na: { bg: 'transparent', color: 'var(--text-muted)', border: 'var(--glass-border)' },
+                      };
+                      const followStyle = followColors[follow.status] || followColors.na;
+                      return (
+                        <tr
+                          key={person.username.toLowerCase()}
+                          style={{
+                            borderTop: '1px solid var(--glass-border)',
+                            background: index % 2 === 0 ? 'var(--bg-row-alt)' : 'transparent',
+                          }}
+                        >
+                          <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontWeight: 600 }}>{index + 1}</td>
+                          <td style={{ padding: '11px 14px', fontWeight: 600 }}>@{person.username}</td>
+                          <td style={{ padding: '11px 14px', textAlign: 'center' }}>{person.commentCount}</td>
+                          <td style={{ padding: '11px 14px', textAlign: 'center', fontWeight: 700, color: eligible ? 'var(--insta-pink)' : 'var(--text-muted)' }}>
+                            {person.ticketCount}
+                          </td>
+                          {followRuleActive && (
+                            <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+                              <span
+                                title={follow.verification?.missing?.length ? `Eksik: @${follow.verification.missing.join(', @')}` : follow.label}
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '4px 8px',
+                                  borderRadius: '50px',
+                                  fontSize: '10px',
+                                  fontWeight: 600,
+                                  background: followStyle.bg,
+                                  color: followStyle.color,
+                                  border: `1px solid ${followStyle.border}`,
+                                }}
+                              >
+                                {follow.label}
+                              </span>
+                            </td>
+                          )}
+                          <td style={{ padding: '11px 14px', textAlign: 'right' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '4px 10px',
+                              borderRadius: '50px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              background: eligible ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.1)',
+                              color: eligible ? '#10b981' : '#ef4444',
+                              border: `1px solid ${eligible ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.25)'}`,
+                            }}
+                            >
+                              {eligible ? 'Geçerli' : 'Filtrelendi'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ margin: '12px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                Çekiliş hakkına göre azalan sırada listelenir.
+              </p>
+            </>
+          )}
         </div>
 
-        <div className="form-group" style={{ flexGrow: 1 }}>
-          <textarea
-            className="form-textarea"
-            style={{ flexGrow: 1, minHeight: '300px', fontSize: '13px', lineHeight: '1.6' }}
-            placeholder={`Örnek Format 1 (Instagram kopyala-yapıştır):\nkullanici_adi\nHarika çekiliş! @arkadas1 @arkadas2\n\nÖrnek Format 2:\nkullanici_adi: Katılıyorum @arkadas`}
-            value={rawText}
-            onChange={handleTextChange}
-          />
-        </div>
-
-        <div style={{ border: '2px dashed var(--glass-border)', borderRadius: '12px', padding: '16px', textAlign: 'center', cursor: 'pointer', position: 'relative', background: 'rgba(0,0,0,0.2)', marginTop: '16px' }}>
-          <input type="file" accept=".csv,.txt" onChange={handleCSVUpload} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} />
-          <Upload size={20} style={{ margin: '0 auto 8px', color: 'var(--insta-pink)' }} />
-          <p style={{ fontSize: '13px', margin: 0, fontWeight: 500 }}>CSV veya TXT Dosyası Sürükleyin veya Seçin</p>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Sütunlar: username, comment formatında olmalıdır</span>
-        </div>
-      </div>
-
-      <div className="glass-container" style={{ padding: '24px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '16px', width: '100%', textAlign: 'center', marginBottom: '20px' }}>
-          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
-            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Toplam Yorum</span>
-            <strong style={{ fontSize: '20px', fontFamily: 'var(--font-title)', fontWeight: 800 }}>{comments.length}</strong>
+        <div className="glass-container step-card" style={{ padding: '24px' }}>
+          <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>Çekiliş Özeti</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '12px', width: '100%', textAlign: 'center', marginBottom: '20px' }}>
+            <div style={{ background: 'var(--bg-inset)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+              <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Yorum</span>
+              <strong style={{ fontSize: '18px', fontFamily: 'var(--font-title)', fontWeight: 800 }}>{comments.length}</strong>
+            </div>
+            <div style={{ background: 'var(--bg-inset)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+              <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Kişi</span>
+              <strong style={{ fontSize: '18px', fontFamily: 'var(--font-title)', fontWeight: 800 }}>{uniqueCommentUsers}</strong>
+            </div>
+            <div style={{ background: 'var(--bg-inset)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+              <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Geçerli</span>
+              <strong style={{ fontSize: '18px', fontFamily: 'var(--font-title)', fontWeight: 800, color: 'var(--insta-orange)' }}>{uniqueParticipantsCount}</strong>
+            </div>
+            <div style={{ background: 'var(--bg-inset)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+              <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Bilet</span>
+              <strong style={{ fontSize: '18px', fontFamily: 'var(--font-title)', fontWeight: 800, color: 'var(--insta-pink)' }}>{ticketsPool.length}</strong>
+            </div>
           </div>
-          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
-            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Benzersiz Kişi</span>
-            <strong style={{ fontSize: '20px', fontFamily: 'var(--font-title)', fontWeight: 800 }}>{uniqueCommentUsers}</strong>
-          </div>
-          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
-            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Geçerli Katılımcı</span>
-            <strong style={{ fontSize: '20px', fontFamily: 'var(--font-title)', fontWeight: 800, color: 'var(--insta-orange)' }}>{uniqueParticipantsCount}</strong>
-          </div>
-          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
-            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Toplam Bilet</span>
-            <strong style={{ fontSize: '20px', fontFamily: 'var(--font-title)', fontWeight: 800, color: 'var(--insta-pink)' }}>{ticketsPool.length}</strong>
-          </div>
-          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
-            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Asil / Yedek</span>
-            <strong style={{ fontSize: '20px', fontFamily: 'var(--font-title)', fontWeight: 800, color: 'var(--insta-blue)' }}>
-              {prizes.reduce((s, p) => s + parseInt(p.winnerCount || 0, 10), 0)} / {prizes.reduce((s, p) => s + parseInt(p.substituteCount || 0, 10), 0)}
-            </strong>
-          </div>
-        </div>
-
-        <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '20px', marginBottom: '20px' }}>
           <button
             type="button"
             className="btn btn-primary"
-            style={{ background: 'linear-gradient(135deg, #fbad50, #e1306c)' }}
+            style={{ background: 'linear-gradient(135deg, #fbad50, #e1306c)', width: '100%' }}
             onClick={handleGenerateStartingStory}
             disabled={generatingStartingStory || ticketsPool.length === 0}
           >
@@ -129,23 +259,26 @@ export default function RaffleCommentsStep({
           )}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '1px solid var(--glass-border)', paddingTop: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '13px' }}>
-            <Info size={16} color="var(--insta-blue)" />
-            <span>Çekilişe hazır {ticketsPool.length} bilet var. Hazırsanız çekilişi başlatın.</span>
+        <div className="glass-container step-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '16px', fontWeight: 700, marginBottom: '12px' }}>Çekilişi Başlat</h3>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', color: 'var(--text-muted)', fontSize: '13px', lineHeight: 1.6, marginBottom: '24px' }}>
+              <Info size={16} color="var(--insta-blue)" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span>Çekilişe hazır <strong style={{ color: 'var(--insta-pink)' }}>{ticketsPool.length}</strong> bilet var. Hazırsanız canlı çekilişe geçin.</span>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-            <button type="button" className="btn btn-secondary" onClick={onBack}>
-              <ArrowLeft size={16} /> Kurallara Dön
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <button
               type="button"
               className="btn btn-primary pulse-glow"
-              style={{ padding: '14px 28px', fontSize: '16px' }}
+              style={{ padding: '14px 28px', fontSize: '16px', width: '100%' }}
               disabled={ticketsPool.length === 0}
               onClick={onStart}
             >
               <Play size={18} fill="white" /> Çekilişi Başlat
+            </button>
+            <button type="button" className="btn btn-secondary" style={{ width: '100%' }} onClick={onBack}>
+              <ArrowLeft size={16} /> Kurallara Dön
             </button>
           </div>
         </div>

@@ -24,8 +24,8 @@ export default function StepProgress({ currentStep }) {
               borderRadius: '50px',
               border: '1px solid',
               borderColor: isActive ? 'var(--insta-pink)' : isDone ? 'rgba(16, 185, 129, 0.4)' : 'var(--glass-border)',
-              background: isActive ? 'rgba(225, 48, 108, 0.12)' : isDone ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255,255,255,0.03)',
-              color: isActive ? 'white' : isDone ? '#10b981' : 'var(--text-muted)',
+              background: isActive ? 'rgba(219, 39, 119, 0.12)' : isDone ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg-inset)',
+              color: isActive ? 'var(--insta-pink)' : isDone ? '#059669' : 'var(--text-muted)',
               fontWeight: isActive ? 700 : 500,
             }}
           >

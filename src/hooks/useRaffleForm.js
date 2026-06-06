@@ -3,7 +3,17 @@ import { loadSetupState, saveSetupState } from '../utils/setupStorage';
 import { downloadConfigTxt, parseConfigFromTxt } from '../utils/raffleConfigFile';
 import { generateSetupStory } from '../utils/generateSetupStory';
 import { generateStartingStory } from '../utils/generateStartingStory';
+import { DEFAULT_STORY_BACKGROUND_ID } from '../utils/storyBackgrounds';
 import { MOCK_COMMENTS_PRESET, parseRawText, parseCSV } from '../utils/commentParsing';
+import {
+  parseFollowAccountList,
+  isFollowRuleActive,
+  getEffectiveMinRequiredFollows,
+  buildFollowVerifyRequest,
+  normalizeFollowVerificationResults,
+  FOLLOW_VERIFY_REQUEST_KEY,
+  FOLLOW_VERIFY_RESULTS_KEY,
+} from '../utils/followRules';
 
 export function useRaffleForm({ importedComments, onClearImported }) {
   const [rawText, setRawText] = useState('');
@@ -20,6 +30,13 @@ export function useRaffleForm({ importedComments, onClearImported }) {
   const [keywordRequired, setKeywordRequired] = useState('');
   const [keywordBlacklist, setKeywordBlacklist] = useState('');
   const [userBlacklist, setUserBlacklist] = useState('');
+  const [requiredFollowAccounts, setRequiredFollowAccounts] = useState('');
+  const [minRequiredFollows, setMinRequiredFollows] = useState(1);
+  const [followVerification, setFollowVerification] = useState({});
+  const [followVerifyMessage, setFollowVerifyMessage] = useState('');
+  const [followVerifyPending, setFollowVerifyPending] = useState(false);
+  const [showPrizeProductsInResultsStory, setShowPrizeProductsInResultsStory] = useState(false);
+  const [storyBackgroundId, setStoryBackgroundId] = useState(DEFAULT_STORY_BACKGROUND_ID);
   const [storageWarning, setStorageWarning] = useState('');
   const [configMessage, setConfigMessage] = useState('');
   const [generatingSetupStory, setGeneratingSetupStory] = useState(false);
@@ -28,9 +45,28 @@ export function useRaffleForm({ importedComments, onClearImported }) {
   const configFileInputRef = useRef(null);
   const parseDebounceRef = useRef(null);
 
+  const followAccountList = useMemo(
+    () => parseFollowAccountList(requiredFollowAccounts),
+    [requiredFollowAccounts]
+  );
+
+  const followRuleActive = useMemo(
+    () => isFollowRuleActive(requiredFollowAccounts, minRequiredFollows),
+    [requiredFollowAccounts, minRequiredFollows]
+  );
+
+  const effectiveMinRequiredFollows = useMemo(
+    () => getEffectiveMinRequiredFollows(followAccountList, minRequiredFollows),
+    [followAccountList, minRequiredFollows]
+  );
+
   const getConfigState = () => ({
     brand, prizes, entryMethod, minMentions, mentionMode, weightedEntry,
     uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
+    requiredFollowAccounts,
+    minRequiredFollows: effectiveMinRequiredFollows,
+    showPrizeProductsInResultsStory,
+    storyBackgroundId,
   });
 
   const applyImportedConfig = (config) => {
@@ -44,6 +80,10 @@ export function useRaffleForm({ importedComments, onClearImported }) {
     setKeywordRequired(config.keywordRequired);
     setKeywordBlacklist(config.keywordBlacklist);
     setUserBlacklist(config.userBlacklist);
+    setRequiredFollowAccounts(config.requiredFollowAccounts || '');
+    setMinRequiredFollows(config.minRequiredFollows ?? 1);
+    setShowPrizeProductsInResultsStory(Boolean(config.showPrizeProductsInResultsStory));
+    setStoryBackgroundId(config.storyBackgroundId || DEFAULT_STORY_BACKGROUND_ID);
   };
 
   useEffect(() => {
@@ -61,6 +101,15 @@ export function useRaffleForm({ importedComments, onClearImported }) {
       if (saved.keywordRequired) setKeywordRequired(saved.keywordRequired);
       if (saved.keywordBlacklist) setKeywordBlacklist(saved.keywordBlacklist);
       if (saved.userBlacklist) setUserBlacklist(saved.userBlacklist);
+      if (saved.requiredFollowAccounts) setRequiredFollowAccounts(saved.requiredFollowAccounts);
+      if (saved.minRequiredFollows != null) setMinRequiredFollows(saved.minRequiredFollows);
+      if (saved.followVerification) setFollowVerification(saved.followVerification);
+      if (saved.showPrizeProductsInResultsStory != null) {
+        setShowPrizeProductsInResultsStory(Boolean(saved.showPrizeProductsInResultsStory));
+      }
+      if (saved.storyBackgroundId) {
+        setStoryBackgroundId(saved.storyBackgroundId);
+      }
     });
   }, []);
 
@@ -70,19 +119,94 @@ export function useRaffleForm({ importedComments, onClearImported }) {
         rawText, comments, brand, prizes,
         entryMethod, minMentions, mentionMode, weightedEntry,
         uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
+        requiredFollowAccounts,
+        minRequiredFollows: effectiveMinRequiredFollows,
+        followVerification,
+        showPrizeProductsInResultsStory,
+        storyBackgroundId,
       }).then((saved) => {
         setStorageWarning(saved ? '' : 'Tarayıcı depolama alanı dolu olabilir; ayarlar tam kaydedilemedi.');
       });
     }, 400);
     return () => window.clearTimeout(timeoutId);
-  }, [rawText, comments, brand, prizes, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist]);
+  }, [rawText, comments, brand, prizes, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist, requiredFollowAccounts, effectiveMinRequiredFollows, followVerification, showPrizeProductsInResultsStory, storyBackgroundId]);
+
+  useEffect(() => {
+    const loadResults = () => {
+      const raw = localStorage.getItem(FOLLOW_VERIFY_RESULTS_KEY);
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        setFollowVerification(normalizeFollowVerificationResults(parsed));
+        setFollowVerifyMessage('Takip doğrulama sonuçları yüklendi.');
+        setFollowVerifyPending(false);
+        localStorage.removeItem(FOLLOW_VERIFY_REQUEST_KEY);
+      } catch (err) {
+        console.error('Takip doğrulama sonuçları okunamadı:', err);
+      }
+    };
+
+    loadResults();
+
+    const onStorage = (event) => {
+      if (event.key === FOLLOW_VERIFY_RESULTS_KEY) loadResults();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  useEffect(() => {
+    if (!followRuleActive || comments.length === 0) {
+      localStorage.removeItem(FOLLOW_VERIFY_REQUEST_KEY);
+      return;
+    }
+
+    const participants = Array.from(new Set(comments.map((c) => c.username)));
+    const request = buildFollowVerifyRequest(participants, requiredFollowAccounts, effectiveMinRequiredFollows);
+    localStorage.setItem(FOLLOW_VERIFY_REQUEST_KEY, JSON.stringify(request));
+  }, [comments, followRuleActive, requiredFollowAccounts, effectiveMinRequiredFollows]);
 
   useEffect(() => {
     if (importedComments?.length > 0) {
       setComments(importedComments);
-      setRawText(`${importedComments.length} yorum eklentiden yüklendi. (Liste performans için gizlendi)`);
+      setRawText('');
     }
   }, [importedComments]);
+
+  const passesFollowRule = (username) => {
+    if (!followRuleActive) return true;
+    const verification = followVerification[username.toLowerCase()];
+    if (!verification?.verified) return true;
+    return verification.meetsRequirement !== false;
+  };
+
+  const getFollowStatusForUser = (username) => {
+    if (!followRuleActive) return { status: 'na', label: '—' };
+    const verification = followVerification[username.toLowerCase()];
+    if (!verification?.verified) {
+      return { status: 'pending', label: 'Doğrulanmadı' };
+    }
+    if (verification.meetsRequirement) {
+      return { status: 'passed', label: 'Takip OK', verification };
+    }
+    return { status: 'failed', label: 'Takip eksik', verification };
+  };
+
+  const handlePrepareFollowVerification = () => {
+    if (!followRuleActive) {
+      alert('Önce takip edilmesi gereken hesapları tanımlayın.');
+      return;
+    }
+    if (comments.length === 0) {
+      alert('Doğrulama için önce yorumları yükleyin.');
+      return;
+    }
+    const participants = Array.from(new Set(comments.map((c) => c.username)));
+    const request = buildFollowVerifyRequest(participants, requiredFollowAccounts, effectiveMinRequiredFollows);
+    localStorage.setItem(FOLLOW_VERIFY_REQUEST_KEY, JSON.stringify(request));
+    setFollowVerifyPending(true);
+    setFollowVerifyMessage(`${participants.length} katılımcı için doğrulama hazır. Chrome eklentisini açıp "Takip Şartlarını Doğrula" butonuna basın. Instagram oturumunuz açık olmalıdır.`);
+  };
 
   const handleImageUpload = (e, callback) => {
     const file = e.target.files[0];
@@ -135,7 +259,7 @@ export function useRaffleForm({ importedComments, onClearImported }) {
       const parsed = parseCSV(event.target.result);
       if (parsed.length > 0) {
         setComments(parsed);
-        setRawText(`${parsed.length} yorum dosyadan yüklendi.`);
+        setRawText('');
       } else {
         alert('CSV dosyası ayrıştırılamadı.');
       }
@@ -145,7 +269,7 @@ export function useRaffleForm({ importedComments, onClearImported }) {
 
   const loadDemoData = () => {
     setComments(MOCK_COMMENTS_PRESET);
-    setRawText(`${MOCK_COMMENTS_PRESET.length} demo yorum yüklendi.`);
+    setRawText('');
   };
 
   const clearData = () => {
@@ -186,6 +310,7 @@ export function useRaffleForm({ importedComments, onClearImported }) {
     Object.values(userEntries).forEach((userData) => {
       const totalUniqueMentions = userData.allMentions.size;
       if (minMentions > 0 && mentionMode === 'cumulative' && totalUniqueMentions < minMentions) return;
+      if (!passesFollowRule(userData.username)) return;
 
       let ticketCount = 0;
       if (minMentions > 0 && weightedEntry) ticketCount = Math.floor(totalUniqueMentions / minMentions);
@@ -204,11 +329,45 @@ export function useRaffleForm({ importedComments, onClearImported }) {
       }
     });
     return tickets;
-  }, [comments, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist]);
+  }, [comments, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist, followRuleActive, followVerification]);
 
   const uniqueParticipantsCount = useMemo(
     () => new Set(ticketsPool.map((t) => t.username.toLowerCase())).size,
     [ticketsPool]
+  );
+
+  const participantStats = useMemo(() => {
+    if (comments.length === 0) return [];
+
+    const byUser = {};
+    comments.forEach((comment) => {
+      const key = comment.username.toLowerCase();
+      if (!byUser[key]) {
+        byUser[key] = { username: comment.username, commentCount: 0, ticketCount: 0 };
+      }
+      byUser[key].commentCount += 1;
+    });
+
+    ticketsPool.forEach((ticket) => {
+      const key = ticket.username.toLowerCase();
+      if (byUser[key]) {
+        byUser[key].ticketCount = ticket.totalTickets;
+      }
+    });
+
+    return Object.values(byUser).map((person) => ({
+      ...person,
+      followStatus: getFollowStatusForUser(person.username),
+    })).sort(
+      (a, b) => b.ticketCount - a.ticketCount
+        || b.commentCount - a.commentCount
+        || a.username.localeCompare(b.username, 'tr')
+    );
+  }, [comments, ticketsPool, followRuleActive, followVerification]);
+
+  const filteredOutCount = useMemo(
+    () => participantStats.filter((p) => p.ticketCount === 0).length,
+    [participantStats]
   );
 
   const handleExportConfigTxt = () => {
@@ -268,6 +427,11 @@ export function useRaffleForm({ importedComments, onClearImported }) {
     rules: {
       entryMethod, minMentions, mentionMode, weightedEntry,
       uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
+      requiredFollowAccounts,
+      minRequiredFollows: effectiveMinRequiredFollows,
+      showPrizeProductsInResultsStory,
+      storyBackgroundId,
+      followVerification,
     },
   });
 
@@ -289,8 +453,15 @@ export function useRaffleForm({ importedComments, onClearImported }) {
     mentionMode, setMentionMode, weightedEntry, setWeightedEntry,
     uniqueMentions, setUniqueMentions, keywordRequired, setKeywordRequired,
     keywordBlacklist, setKeywordBlacklist, userBlacklist, setUserBlacklist,
+    requiredFollowAccounts, setRequiredFollowAccounts,
+    minRequiredFollows, setMinRequiredFollows,
+    followAccountList, followRuleActive, effectiveMinRequiredFollows,
+    followVerification, followVerifyMessage, followVerifyPending,
+    handlePrepareFollowVerification, getFollowStatusForUser,
+    showPrizeProductsInResultsStory, setShowPrizeProductsInResultsStory,
+    storyBackgroundId, setStoryBackgroundId,
     rawText, comments, handleTextChange, handleCSVUpload, loadDemoData, clearData,
-    handleImageUpload, ticketsPool, uniqueParticipantsCount,
+    handleImageUpload, ticketsPool, uniqueParticipantsCount, participantStats, filteredOutCount,
     storageWarning, configMessage,
     generatingSetupStory, generatingStartingStory,
     handleExportConfigTxt, handleImportConfigTxt,

@@ -1,30 +1,36 @@
 import React from 'react';
 import {
   Settings, Upload, ListFilter, Award, Image as ImageIcon, Trash2,
-  FileText, Download, FolderOpen, Share2, ArrowRight,
+  FileText, Download, FolderOpen, Share2, ArrowRight, Megaphone,
 } from 'lucide-react';
+import StoryBackgroundPicker from './StoryBackgroundPicker';
 
-export default function RaffleConfigStep({ form, onNext }) {
+export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement }) {
   const {
     brand, setBrand, prizes, addPrize, removePrize, updatePrize,
     entryMethod, setEntryMethod, minMentions, setMinMentions,
     mentionMode, setMentionMode, weightedEntry, setWeightedEntry,
     uniqueMentions, setUniqueMentions, keywordRequired, setKeywordRequired,
     keywordBlacklist, setKeywordBlacklist, userBlacklist, setUserBlacklist,
+    requiredFollowAccounts, setRequiredFollowAccounts,
+    minRequiredFollows, setMinRequiredFollows, followAccountList,
+    showPrizeProductsInResultsStory, setShowPrizeProductsInResultsStory,
+    storyBackgroundId, setStoryBackgroundId,
     handleImageUpload, storageWarning, configMessage,
     generatingSetupStory, handleExportConfigTxt, handleImportConfigTxt,
     handleGenerateSetupStory, configFileInputRef,
   } = form;
 
   return (
-    <div style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div className="step-page">
       {storageWarning && (
-        <div className="glass-container" style={{ padding: '12px 16px', background: 'rgba(251, 173, 80, 0.1)', borderColor: 'rgba(251, 173, 80, 0.3)', borderRadius: '12px', fontSize: '13px', color: 'var(--insta-orange)' }}>
+        <div className="glass-container step-card-full" style={{ padding: '12px 16px', background: 'rgba(251, 173, 80, 0.1)', borderColor: 'rgba(251, 173, 80, 0.3)', borderRadius: '12px', fontSize: '13px', color: 'var(--insta-orange)' }}>
           {storageWarning}
         </div>
       )}
 
-      <div className="glass-container" style={{ padding: '24px' }}>
+      <div className="step-cards-grid">
+      <div className="glass-container step-card" style={{ padding: '24px' }}>
         <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
           <Settings className="gradient-text" /> Marka ve Çekiliş Bilgileri
         </h3>
@@ -52,7 +58,7 @@ export default function RaffleConfigStep({ form, onNext }) {
           </div>
           <div className="form-group">
             <label className="form-label">Marka Logosu</label>
-            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '12px', cursor: 'pointer', color: 'var(--text-main)', fontSize: '14px', minHeight: brand.logo ? '80px' : 'auto' }}>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'var(--bg-inset)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '12px', cursor: 'pointer', color: 'var(--text-main)', fontSize: '14px', minHeight: brand.logo ? '80px' : 'auto' }}>
               {brand.logo ? (
                 <img src={brand.logo} alt="Marka logosu" style={{ maxHeight: '60px', maxWidth: '100%', objectFit: 'contain', borderRadius: '8px' }} />
               ) : (
@@ -72,14 +78,14 @@ export default function RaffleConfigStep({ form, onNext }) {
         </div>
       </div>
 
-      <div className="glass-container" style={{ padding: '24px' }}>
+      <div className="glass-container step-card" style={{ padding: '24px' }}>
         <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Award className="gradient-text" /> Ödüller</span>
           <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', borderColor: 'var(--insta-orange)' }} onClick={addPrize}>+ Yeni Ödül Ekle</button>
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {prizes.map((prize, idx) => (
-            <div key={prize.id} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '16px', position: 'relative' }}>
+            <div key={prize.id} style={{ background: 'var(--bg-inset)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '16px', position: 'relative' }}>
               {prizes.length > 1 && (
                 <button type="button" onClick={() => removePrize(prize.id)} style={{ position: 'absolute', top: '12px', right: '12px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
                   <Trash2 size={16} />
@@ -93,7 +99,7 @@ export default function RaffleConfigStep({ form, onNext }) {
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: '12px' }}>Ürün Resmi (Opsiyonel)</label>
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '8px 12px', cursor: 'pointer', fontSize: '13px', minHeight: prize.image ? '70px' : 'auto' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'var(--bg-inset)', border: '1px solid var(--glass-border)', borderRadius: '12px', padding: '8px 12px', cursor: 'pointer', fontSize: '13px', minHeight: prize.image ? '70px' : 'auto' }}>
                     {prize.image ? (
                       <img src={prize.image} alt={prize.name || `${idx + 1}. ödül`} style={{ maxHeight: '56px', maxWidth: '100%', objectFit: 'contain', borderRadius: '8px' }} />
                     ) : (
@@ -125,7 +131,7 @@ export default function RaffleConfigStep({ form, onNext }) {
         </div>
       </div>
 
-      <div className="glass-container" style={{ padding: '24px' }}>
+      <div className="glass-container step-card" style={{ padding: '24px' }}>
         <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <ListFilter className="gradient-text" size={20} /> Kurallar ve Filtreler
         </h3>
@@ -202,15 +208,62 @@ export default function RaffleConfigStep({ form, onNext }) {
           <label className="form-label">Engellenen Katılımcılar (Virgülle Ayırın)</label>
           <input type="text" className="form-input" placeholder="Örn: @kendi_hesabiniz, @spam_user" value={userBlacklist} onChange={(e) => setUserBlacklist(e.target.value)} />
         </div>
+
+        <div style={{ borderTop: '1px solid var(--glass-border)', margin: '16px 0', paddingTop: '16px' }} />
+
+        <h4 style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Takip Şartları</h4>
+        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: 1.6 }}>
+          Katılımcıların takip etmesi gereken hesapları tanımlayın. Chrome eklentisi profilleri gezerek bu şartı doğrular.
+        </p>
+        <div className="form-group">
+          <label className="form-label">Takip Edilmesi Gereken Hesaplar</label>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="Örn: @marka_hesabi, @partner1, @partner2"
+            value={requiredFollowAccounts}
+            onChange={(e) => setRequiredFollowAccounts(e.target.value)}
+          />
+        </div>
+        <div className="form-group">
+          <label className="form-label">En Az Kaç Hesap Takip Edilmeli?</label>
+          <input
+            type="number"
+            min="1"
+            className="form-input"
+            value={minRequiredFollows}
+            onChange={(e) => setMinRequiredFollows(Math.max(1, parseInt(e.target.value, 10) || 1))}
+            disabled={!requiredFollowAccounts.trim()}
+          />
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            Listede {followAccountList.length || 0} hesap var. Tümünü zorunlu kılmak için sayıyı listeye eşitleyin.
+          </span>
+        </div>
       </div>
 
-      <div className="glass-container" style={{ padding: '24px' }}>
+      <div className="glass-container step-card" style={{ padding: '24px' }}>
         <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
           <FileText className="gradient-text" /> Tanımları Kaydet ve Paylaş
         </h3>
         <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: 1.6 }}>
           Çekiliş öncesi tanımlarınızı kaydedin veya ön duyuru story görseli oluşturun. Çekiliş günü TXT dosyasını yüklemeniz yeterli.
         </p>
+        <StoryBackgroundPicker value={storyBackgroundId} onChange={setStoryBackgroundId} />
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '16px', background: 'var(--bg-muted)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--glass-border)' }}>
+          <input
+            type="checkbox"
+            id="showPrizeProductsInResultsStory"
+            checked={showPrizeProductsInResultsStory}
+            onChange={(e) => setShowPrizeProductsInResultsStory(e.target.checked)}
+            style={{ cursor: 'pointer', width: '16px', height: '16px', marginTop: '2px', accentColor: 'var(--insta-pink)' }}
+          />
+          <label htmlFor="showPrizeProductsInResultsStory" style={{ fontSize: '13px', cursor: 'pointer', lineHeight: 1.6 }}>
+            <strong>Sonuç story&apos;sinde kazanılan ürünleri göster</strong>
+            <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', fontWeight: 400, marginTop: '4px' }}>
+              Açıkken çekiliş sonuç story görselinde her kazananın yanında ödül adı ve ürün görseli yer alır.
+            </span>
+          </label>
+        </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button type="button" className="btn btn-secondary" onClick={handleExportConfigTxt}>
             <Download size={16} /> Ayarları TXT İndir
@@ -224,14 +277,20 @@ export default function RaffleConfigStep({ form, onNext }) {
           <input ref={configFileInputRef} type="file" accept=".txt" style={{ display: 'none' }} onChange={handleImportConfigTxt} />
         </div>
         {configMessage && (
-          <p style={{ marginTop: '14px', marginBottom: 0, fontSize: '13px', color: 'var(--insta-yellow)', background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
+          <p style={{ marginTop: '14px', marginBottom: 0, fontSize: '13px', color: 'var(--insta-yellow)', background: 'var(--bg-inset)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
             {configMessage}
           </p>
         )}
       </div>
+      </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button type="button" className="btn btn-primary pulse-glow" style={{ padding: '14px 28px', fontSize: '16px' }} onClick={onNext}>
+      <div className="step-card-full" style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+        {onBackToAnnouncement && (
+          <button type="button" className="btn btn-secondary" style={{ padding: '14px 20px', fontSize: '14px' }} onClick={onBackToAnnouncement}>
+            <Megaphone size={16} /> İlan Sayfasına Dön
+          </button>
+        )}
+        <button type="button" className="btn btn-primary pulse-glow" style={{ padding: '14px 28px', fontSize: '16px', marginLeft: 'auto' }} onClick={onNext}>
           Yorumları Yükle <ArrowRight size={18} />
         </button>
       </div>

@@ -1,12 +1,10 @@
 import {
-  STORY_WIDTH,
-  STORY_HEIGHT,
   loadImage,
   drawRoundRect,
-  drawStoryBackground,
-  drawStoryGlassCard,
+  initStoryCanvas,
   downloadCanvasAsPng,
   wrapText,
+  STORY_WIDTH,
 } from './storyCanvas';
 
 function drawBadge(ctx, text, centerY) {
@@ -39,18 +37,12 @@ function drawBadge(ctx, text, centerY) {
 }
 
 export async function generateStartingStory(state, stats = {}) {
-  const { brand, prizes } = state;
+  const { brand, prizes, storyBackgroundId } = state;
   const participantCount = stats.participantCount ?? 0;
   const ticketCount = stats.ticketCount ?? 0;
   const prizeCount = stats.prizeCount ?? (prizes?.length || 0);
 
-  const canvas = document.createElement('canvas');
-  canvas.width = STORY_WIDTH;
-  canvas.height = STORY_HEIGHT;
-  const ctx = canvas.getContext('2d');
-
-  drawStoryBackground(ctx);
-  drawStoryGlassCard(ctx, 80, 1760);
+  const { canvas, ctx, p } = initStoryCanvas(storyBackgroundId, 80, 1760);
 
   ctx.strokeStyle = 'rgba(252, 204, 99, 0.35)';
   ctx.lineWidth = 6;
@@ -58,7 +50,7 @@ export async function generateStartingStory(state, stats = {}) {
   ctx.arc(STORY_WIDTH / 2, 420, 280, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.strokeStyle = p.divider;
   ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.arc(STORY_WIDTH / 2, 420, 320, 0, Math.PI * 2);
@@ -86,7 +78,7 @@ export async function generateStartingStory(state, stats = {}) {
   y += 120;
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = p.textPrimary;
   ctx.font = 'bold 56px Outfit';
 
   const raffleTitle = brand?.raffleName || 'BÜYÜK ÇEKİLİŞ';
@@ -98,17 +90,17 @@ export async function generateStartingStory(state, stats = {}) {
 
   if (brand?.name) {
     ctx.font = '600 32px Inter';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.fillStyle = p.textSecondary;
     ctx.fillText(brand.name, STORY_WIDTH / 2, y + 12);
     y += 48;
   }
 
   ctx.font = '500 30px Inter';
-  ctx.fillStyle = '#fccc63';
+  ctx.fillStyle = p.accent;
   ctx.fillText('🎬 Canlı çekiliş şimdi başlıyor!', STORY_WIDTH / 2, y + 20);
   y += 70;
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.strokeStyle = p.divider;
   ctx.beginPath();
   ctx.moveTo(140, y);
   ctx.lineTo(940, y);
@@ -127,24 +119,24 @@ export async function generateStartingStory(state, stats = {}) {
 
   statItems.forEach((item, i) => {
     const x = statStartX + i * (statW + statGap);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.fillStyle = p.cardFill;
     ctx.beginPath();
     drawRoundRect(ctx, x, y, statW, 110, 16);
     ctx.fill();
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.fillStyle = p.textSoft;
     ctx.font = '600 22px Inter';
     ctx.fillText(item.label, x + statW / 2, y + 38);
 
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = p.textPrimary;
     ctx.font = 'bold 40px Outfit';
     ctx.fillText(String(item.value), x + statW / 2, y + 82);
   });
 
   y += 150;
 
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = p.textPrimary;
   ctx.font = 'bold 38px Outfit';
   ctx.fillText('🎁 VERİLECEK ÖDÜLLER', STORY_WIDTH / 2, y);
   y += 45;
@@ -163,7 +155,7 @@ export async function generateStartingStory(state, stats = {}) {
     const x = startX + col * (cellW + 24);
     const cellY = y + row * (cellH + 20);
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.fillStyle = p.cardFill;
     ctx.beginPath();
     drawRoundRect(ctx, x, cellY, cellW, cellH, 18);
     ctx.fill();
@@ -179,12 +171,12 @@ export async function generateStartingStory(state, stats = {}) {
     }
 
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = p.textPrimary;
     ctx.font = 'bold 28px Inter';
     const name = prize.name || `${i + 1}. Ödül`;
     ctx.fillText(name.length > 18 ? `${name.slice(0, 16)}...` : name, x + 120, cellY + 55);
 
-    ctx.fillStyle = '#fccc63';
+    ctx.fillStyle = p.accent;
     ctx.font = '600 22px Inter';
     ctx.fillText(`${prize.winnerCount || 1} asil · ${prize.substituteCount || 0} yedek`, x + 120, cellY + 95);
   }
@@ -192,7 +184,7 @@ export async function generateStartingStory(state, stats = {}) {
   if ((prizes || []).length > visiblePrizes.length) {
     y += Math.ceil(visiblePrizes.length / cols) * (cellH + 20) + 10;
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.fillStyle = p.textSoft;
     ctx.font = '600 24px Inter';
     ctx.fillText(`+ ${prizes.length - visiblePrizes.length} ödül daha`, STORY_WIDTH / 2, y);
   } else {
@@ -201,19 +193,18 @@ export async function generateStartingStory(state, stats = {}) {
 
   y += 50;
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+  ctx.fillStyle = p.textMuted;
   ctx.font = '500 28px Inter';
   ctx.fillText('Bol şans! Kazananlar birazdan açıklanacak.', STORY_WIDTH / 2, y);
 
   if (brand?.postUrl?.trim()) {
     y += 44;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.fillStyle = p.textSoft;
     ctx.font = '600 22px Inter';
-    const linkText = 'Çekiliş gönderisi profilde / hikayede';
-    ctx.fillText(linkText, STORY_WIDTH / 2, y);
+    ctx.fillText('Çekiliş gönderisi profilde / hikayede', STORY_WIDTH / 2, y);
   }
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.fillStyle = p.textFaint;
   ctx.font = '600 24px Outfit';
   ctx.fillText('instagram-cekilis-uygulamasi.github.io', STORY_WIDTH / 2, 1780);
 

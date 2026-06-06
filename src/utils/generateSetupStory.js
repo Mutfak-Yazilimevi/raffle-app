@@ -1,17 +1,15 @@
 import {
-  STORY_WIDTH,
-  STORY_HEIGHT,
   loadImage,
   drawRoundRect,
-  drawStoryBackground,
-  drawStoryGlassCard,
+  initStoryCanvas,
   downloadCanvasAsPng,
   wrapText,
+  STORY_WIDTH,
 } from './storyCanvas';
 import { getRulesSummaryLines } from './raffleConfigFile';
 
 export async function generateSetupStory(state) {
-  const { brand, prizes, ...ruleFields } = state;
+  const { brand, prizes, storyBackgroundId, ...ruleFields } = state;
   const rules = {
     entryMethod: ruleFields.entryMethod,
     minMentions: ruleFields.minMentions,
@@ -21,15 +19,11 @@ export async function generateSetupStory(state) {
     keywordRequired: ruleFields.keywordRequired,
     keywordBlacklist: ruleFields.keywordBlacklist,
     userBlacklist: ruleFields.userBlacklist,
+    requiredFollowAccounts: ruleFields.requiredFollowAccounts,
+    minRequiredFollows: ruleFields.minRequiredFollows,
   };
 
-  const canvas = document.createElement('canvas');
-  canvas.width = STORY_WIDTH;
-  canvas.height = STORY_HEIGHT;
-  const ctx = canvas.getContext('2d');
-
-  drawStoryBackground(ctx);
-  drawStoryGlassCard(ctx, 100, 1720);
+  const { canvas, ctx, p } = initStoryCanvas(storyBackgroundId, 100, 1720);
 
   let y = 180;
 
@@ -50,7 +44,7 @@ export async function generateSetupStory(state) {
   }
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = p.textPrimary;
   ctx.font = 'bold 68px Outfit';
 
   const title = brand?.raffleName || 'ÇEKİLİŞ DUYURUSU';
@@ -62,24 +56,24 @@ export async function generateSetupStory(state) {
 
   if (brand?.name) {
     ctx.font = '600 34px Inter';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    ctx.fillStyle = p.textSecondary;
     ctx.fillText(brand.name, STORY_WIDTH / 2, y + 10);
     y += 50;
   }
 
   ctx.font = '500 28px Inter';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+  ctx.fillStyle = p.textMuted;
   ctx.fillText('Katılım şartları ve ödüller aşağıdadır', STORY_WIDTH / 2, y + 20);
   y += 60;
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.strokeStyle = p.divider;
   ctx.beginPath();
   ctx.moveTo(140, y);
   ctx.lineTo(940, y);
   ctx.stroke();
   y += 50;
 
-  ctx.fillStyle = '#fccc63';
+  ctx.fillStyle = p.accent;
   ctx.font = 'bold 42px Outfit';
   ctx.fillText('🎁 ÖDÜLLER', STORY_WIDTH / 2, y);
   y += 50;
@@ -91,7 +85,7 @@ export async function generateSetupStory(state) {
     const rowH = 110;
     const rowY = y;
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.fillStyle = p.cardFill;
     ctx.beginPath();
     drawRoundRect(ctx, 130, rowY, 820, rowH, 18);
     ctx.fill();
@@ -110,12 +104,12 @@ export async function generateSetupStory(state) {
     }
 
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = p.textPrimary;
     ctx.font = 'bold 30px Inter';
     const prizeName = prize.name || `${i + 1}. Ödül`;
     ctx.fillText(prizeName.length > 28 ? `${prizeName.slice(0, 26)}...` : prizeName, textX, rowY + 48);
 
-    ctx.fillStyle = '#fccc63';
+    ctx.fillStyle = p.accent;
     ctx.font = '600 22px Inter';
     ctx.fillText(
       `${prize.winnerCount || 1} asil · ${prize.substituteCount || 0} yedek`,
@@ -128,14 +122,14 @@ export async function generateSetupStory(state) {
 
   if ((prizes || []).length > visiblePrizes.length) {
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.fillStyle = p.textSoft;
     ctx.font = '600 24px Inter';
     ctx.fillText(`+ ${prizes.length - visiblePrizes.length} ödül daha`, STORY_WIDTH / 2, y + 10);
     y += 40;
   }
 
   y += 20;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.strokeStyle = p.divider;
   ctx.beginPath();
   ctx.moveTo(140, y);
   ctx.lineTo(940, y);
@@ -143,7 +137,7 @@ export async function generateSetupStory(state) {
   y += 45;
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = p.textPrimary;
   ctx.font = 'bold 36px Outfit';
   ctx.fillText('📋 KATILIM KURALLARI', STORY_WIDTH / 2, y);
   y += 45;
@@ -151,21 +145,20 @@ export async function generateSetupStory(state) {
   const ruleLines = getRulesSummaryLines(rules || {}).slice(0, 6);
   ctx.textAlign = 'left';
   ctx.font = '500 26px Inter';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
 
   for (const line of ruleLines) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+    ctx.fillStyle = p.cardFillLight;
     ctx.beginPath();
     drawRoundRect(ctx, 150, y - 28, 780, 52, 14);
     ctx.fill();
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.fillStyle = p.textSecondary;
     ctx.fillText(`• ${line}`, 180, y + 2);
     y += 62;
   }
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.fillStyle = p.textFaint;
   ctx.font = '600 24px Outfit';
   ctx.fillText('instagram-cekilis-uygulamasi.github.io', STORY_WIDTH / 2, 1780);
 

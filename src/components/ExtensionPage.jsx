@@ -56,7 +56,7 @@ export default function ExtensionPage({ onBack, postUrl: postUrlProp }) {
         <ol style={{ margin: '0 0 24px', paddingLeft: '22px', fontSize: '14px', lineHeight: 1.9, color: 'var(--text-main)' }}>
           <li>
             <strong>Eklentiyi indirin ve kurun</strong> — ZIP dosyasını indirin, arşivi açın.
-            Chrome&apos;da <code style={{ fontSize: '12px', background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px' }}>chrome://extensions</code> adresine gidin,
+            Chrome&apos;da <code style={{ fontSize: '12px', background: 'var(--bg-inset)', padding: '2px 6px', borderRadius: '4px' }}>chrome://extensions</code> adresine gidin,
             Geliştirici modunu açın ve Paketlenmemiş öğe yükle ile klasörü seçin.
           </li>
           <li>
@@ -67,6 +67,10 @@ export default function ExtensionPage({ onBack, postUrl: postUrlProp }) {
           </li>
           <li>
             <strong>Çekiliş uygulamasına dönün</strong> — 2. adımda (Yorumlar) aktarılan veriler otomatik görünür.
+          </li>
+          <li>
+            <strong>Takip şartı varsa doğrulayın</strong> — Kurallar adımında tanımladığınız hesaplar için Yorumlar sayfasında
+            &quot;Eklenti ile Doğrula&quot; deyin; eklenti katılımcı profillerini gezerek takip listesini kontrol eder.
           </li>
         </ol>
 

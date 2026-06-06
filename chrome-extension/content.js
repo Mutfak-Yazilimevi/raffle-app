@@ -360,9 +360,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.type === 'STOP_SCRAPING') {
     const count = stopScraping();
     sendResponse({ status: 'stopped', count });
-  } else if (request.type === 'GET_COMMENTS') {
+  } else   if (request.type === 'GET_COMMENTS') {
     scrapeVisibleComments();
     sendResponse({ comments: getCommentsArray() });
+  } else if (request.type === 'VERIFY_PARTICIPANT_FOLLOWS') {
+    const verifyFn = window.__raffleFollowVerify?.verifyParticipantFollowsRequired;
+    if (!verifyFn) {
+      sendResponse({ ok: false, error: 'follow_verify_unavailable', followed: [], missing: request.requiredFollowAccounts || [], meetsRequirement: false });
+    } else {
+      verifyFn(request.requiredFollowAccounts, request.minRequiredFollows)
+        .then(sendResponse)
+        .catch((err) => {
+          sendResponse({
+            ok: false,
+            error: err?.message || 'verify_failed',
+            followed: [],
+            missing: request.requiredFollowAccounts || [],
+            meetsRequirement: false,
+          });
+        });
+    }
   }
 
   return true;

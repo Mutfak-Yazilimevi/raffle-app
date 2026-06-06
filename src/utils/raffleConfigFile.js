@@ -1,3 +1,5 @@
+import { getFollowRuleSummary } from './followRules';
+
 const FILE_HEADER = '# RaffleStudio Çekiliş Ayar Dosyası v1';
 const FILE_HINT = '# Çekiliş günü bu dosyayı yükleyerek marka, ödül ve kural tanımlarınızı geri getirin.';
 
@@ -27,6 +29,10 @@ export function buildConfigSnapshot(state) {
       keywordRequired: state.keywordRequired || '',
       keywordBlacklist: state.keywordBlacklist || '',
       userBlacklist: state.userBlacklist || '',
+      showPrizeProductsInResultsStory: Boolean(state.showPrizeProductsInResultsStory),
+      storyBackgroundId: state.storyBackgroundId || 'insta-gradient',
+      requiredFollowAccounts: state.requiredFollowAccounts || '',
+      minRequiredFollows: Math.max(0, parseInt(state.minRequiredFollows, 10) || 0),
     },
   };
 }
@@ -71,6 +77,10 @@ export function parseConfigFromTxt(text) {
     keywordRequired: parsed.rules?.keywordRequired || '',
     keywordBlacklist: parsed.rules?.keywordBlacklist || '',
     userBlacklist: parsed.rules?.userBlacklist || '',
+    showPrizeProductsInResultsStory: Boolean(parsed.rules?.showPrizeProductsInResultsStory),
+    storyBackgroundId: parsed.rules?.storyBackgroundId || 'insta-gradient',
+    requiredFollowAccounts: parsed.rules?.requiredFollowAccounts || '',
+    minRequiredFollows: Math.max(0, parseInt(parsed.rules?.minRequiredFollows, 10) || 0),
   };
 }
 
@@ -102,6 +112,9 @@ export function getRulesSummaryLines(rules) {
   if (rules.keywordRequired?.trim()) lines.push(`Zorunlu: ${rules.keywordRequired.trim()}`);
   if (rules.keywordBlacklist?.trim()) lines.push(`Yasaklı kelime filtresi var`);
   if (rules.userBlacklist?.trim()) lines.push(`Engelli kullanıcı listesi var`);
+
+  const followLine = getFollowRuleSummary(rules.requiredFollowAccounts, rules.minRequiredFollows);
+  if (followLine) lines.push(followLine);
 
   return lines;
 }

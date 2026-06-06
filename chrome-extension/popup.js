@@ -1,11 +1,14 @@
 // Instagram Çekiliş Yardımcısı - Popup Script
 
 const DEFAULT_APP_URL = 'https://mutfak-yazilimevi.github.io/raffle-app/';
+const APP_URL_PATTERNS = ['raffle-app', 'localhost', '127.0.0.1'];
 
 let activeTabId = null;
 let isScraping = false;
 let scrapedComments = [];
 let popupPort = null;
+let appTabId = null;
+let followVerifyRunning = false;
 
 function connectPopupSession() {
   try {
@@ -39,6 +42,113 @@ function stopScrapingOnTab(callback) {
   });
 }
 
+function isAppUrl(url) {
+  if (!url) return false;
+  return APP_URL_PATTERNS.some((part) => url.includes(part));
+}
+
+function readAppLocalStorage(tabId, keys) {
+  return new Promise((resolve) => {
+    chrome.scripting.executeScript({
+      target: { tabId },
+      func: (storageKeys) => {
+        const result = {};
+        storageKeys.forEach((key) => {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            try {
+              result[key] = JSON.parse(raw);
+            } catch (_) {
+              result[key] = raw;
+            }
+          }
+        });
+        return result;
+      },
+      args: [keys],
+    }, (results) => {
+      resolve(results?.[0]?.result || {});
+    });
+  });
+}
+
+async function findAppTab() {
+  const tabs = await chrome.tabs.query({});
+  return tabs.find((tab) => isAppUrl(tab.url)) || null;
+}
+
+async function setupFollowVerificationUI(elements) {
+  const {
+    followSection,
+    followRuleSummary,
+    followVerifyStatus,
+    btnVerifyFollows,
+  } = elements;
+
+  const appTab = await findAppTab();
+  if (!appTab) {
+    followSection.style.display = 'none';
+    return;
+  }
+
+  appTabId = appTab.id;
+  const data = await readAppLocalStorage(appTab.id, ['raffle_follow_verify_request']);
+  const request = data.raffle_follow_verify_request;
+
+  if (!request?.requiredFollowAccounts?.length) {
+    followSection.style.display = 'none';
+    return;
+  }
+
+  followSection.style.display = 'block';
+  const handles = request.requiredFollowAccounts.map((a) => `@${a}`).join(', ');
+  followRuleSummary.textContent = request.minRequiredFollows >= request.requiredFollowAccounts.length
+    ? `${handles} (tümü)`
+    : `${handles} (${request.minRequiredFollows}+)`;
+  followVerifyStatus.textContent = request.status === 'pending'
+    ? `${request.participants?.length || 0} katılımcı bekliyor`
+    : 'Hazır';
+
+  btnVerifyFollows.disabled = followVerifyRunning;
+  btnVerifyFollows.onclick = async () => {
+    if (followVerifyRunning) return;
+
+    const latest = await readAppLocalStorage(appTab.id, ['raffle_follow_verify_request']);
+    const req = latest.raffle_follow_verify_request;
+    if (!req?.participants?.length) {
+      followVerifyStatus.textContent = 'Doğrulama isteği bulunamadı';
+      followVerifyStatus.className = 'status-value error';
+      return;
+    }
+
+    followVerifyRunning = true;
+    btnVerifyFollows.disabled = true;
+    followVerifyStatus.textContent = 'Doğrulanıyor...';
+    followVerifyStatus.className = 'status-value';
+
+    chrome.runtime.sendMessage({
+      type: 'START_FOLLOW_VERIFICATION',
+      requestId: req.requestId,
+      participants: req.participants,
+      requiredFollowAccounts: req.requiredFollowAccounts,
+      minRequiredFollows: req.minRequiredFollows,
+      appTabId: appTab.id,
+    }, (response) => {
+      followVerifyRunning = false;
+      btnVerifyFollows.disabled = false;
+
+      if (!response?.ok) {
+        followVerifyStatus.textContent = response?.error || 'Doğrulama başarısız';
+        followVerifyStatus.className = 'status-value error';
+        return;
+      }
+
+      followVerifyStatus.textContent = 'Tamamlandı — uygulamaya aktarıldı';
+      followVerifyStatus.className = 'status-value success';
+    });
+  };
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   connectPopupSession();
 
@@ -53,8 +163,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnStop = document.getElementById('btn-stop');
   const btnExport = document.getElementById('btn-export');
 
+  const followSection = document.getElementById('follow-verify-section');
+  const followRuleSummary = document.getElementById('follow-rule-summary');
+  const followVerifyStatus = document.getElementById('follow-verify-status');
+  const btnVerifyFollows = document.getElementById('btn-verify-follows');
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
+
+  if (isAppUrl(tab.url)) {
+    pageStatusEl.textContent = 'Çekiliş Uygulaması';
+    pageStatusEl.className = 'status-value success';
+    btnStart.disabled = true;
+    btnExport.disabled = true;
+    appTabId = tab.id;
+    await setupFollowVerificationUI({
+      followSection,
+      followRuleSummary,
+      followVerifyStatus,
+      btnVerifyFollows,
+    });
+    return;
+  }
 
   const isInstagramPost = tab.url && (
     tab.url.includes('instagram.com/p/') ||
@@ -73,7 +203,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (_) {
       await chrome.scripting.executeScript({
         target: { tabId: activeTabId },
-        files: ['content.js'],
+        files: ['followVerify.js', 'content.js'],
       });
     }
   } else {
@@ -82,6 +212,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnStart.disabled = true;
   }
 
+  await setupFollowVerificationUI({
+    followSection,
+    followRuleSummary,
+    followVerifyStatus,
+    btnVerifyFollows,
+  });
+
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'SCRAPE_UPDATE') {
       commentCountEl.textContent = message.count;
@@ -89,6 +226,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (message.count > 0) {
         btnExport.disabled = false;
       }
+    }
+
+    if (message.type === 'FOLLOW_VERIFY_PROGRESS' && followVerifyStatus) {
+      followVerifyStatus.textContent = `${message.current}/${message.total} · @${message.participant}`;
+    }
+
+    if (message.type === 'FOLLOW_VERIFY_DONE' && followVerifyStatus) {
+      followVerifyStatus.textContent = 'Tamamlandı';
+      followVerifyStatus.className = 'status-value success';
+      followVerifyRunning = false;
+      if (btnVerifyFollows) btnVerifyFollows.disabled = false;
     }
   });
 
@@ -134,10 +282,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!activeTabId) return;
 
     const finishExport = () => {
-      chrome.tabs.sendMessage(activeTabId, { type: 'GET_COMMENTS' }, (response) => {
+      chrome.tabs.sendMessage(activeTabId, { type: 'GET_COMMENTS' }, async (response) => {
         if (!response?.comments?.length) return;
 
         scrapedComments = response.comments;
+
+        const appTab = await findAppTab();
 
         chrome.tabs.create({ url: DEFAULT_APP_URL }, (newTab) => {
           chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
@@ -162,6 +312,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
           });
         });
+
+        if (appTab) {
+          await readAppLocalStorage(appTab.id, ['raffle_follow_verify_request']);
+        }
       });
     };
 

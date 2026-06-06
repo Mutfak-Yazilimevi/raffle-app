@@ -1,9 +1,31 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Award, Volume2, VolumeX, ChevronRight, RefreshCw, Trophy, Share2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { generateStartingStory } from '../utils/generateStartingStory';
+import { generateWinnerStory } from '../utils/generateWinnerStory';
 
-export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComplete }) {
+const SLOT_ITEM_HEIGHT = 48;
+const IDLE_NAME_COUNT = 24;
+
+function buildNameLoop(pool, count) {
+  if (pool.length === 0) return ['Çekilişe Hazır!'];
+  const names = [];
+  for (let i = 0; i < count; i += 1) {
+    names.push(pool[Math.floor(Math.random() * pool.length)].username);
+  }
+  return names;
+}
+
+function buildSpinSequence(pool, winnerUsername, totalItems) {
+  const names = [];
+  for (let i = 0; i < totalItems - 1; i += 1) {
+    names.push(pool[Math.floor(Math.random() * pool.length)].username);
+  }
+  names.push(winnerUsername);
+  return names;
+}
+
+export default function RaffleAnimation({ ticketsPool, brand, prizes, storyBackgroundId, onDrawComplete }) {
   const activePrizes = prizes?.length > 0 ? prizes : [{ id: 1, name: 'Ödül', winnerCount: 1, substituteCount: 0 }];
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [drawingPool, setDrawingPool] = useState([...ticketsPool]);
@@ -21,12 +43,79 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
   const currentPrize = activePrizes[currentStep.prizeIndex] || activePrizes[0];
   const [isSpinning, setIsSpinning] = useState(false);
   const [animationNames, setAnimationNames] = useState([]);
-  const [slotIndex, setSlotIndex] = useState(0);
+  const [slotScrollOffset, setSlotScrollOffset] = useState(0);
+  const [idleScrollOffset, setIdleScrollOffset] = useState(0);
   const [winnerTicket, setWinnerTicket] = useState(null);
   const [generatingStartingStory, setGeneratingStartingStory] = useState(false);
+  const [generatingWinnerStory, setGeneratingWinnerStory] = useState(false);
 
   const slotListRef = useRef(null);
+  const slotContainerRef = useRef(null);
   const audioContextRef = useRef(null);
+  const spinTimerRef = useRef(null);
+  const idleRafRef = useRef(null);
+  const chosenTicketRef = useRef(null);
+
+  const idleNames = useMemo(
+    () => {
+      const segment = buildNameLoop(drawingPool, IDLE_NAME_COUNT);
+      return segment.length > 1 ? [...segment, ...segment] : segment;
+    },
+    [drawingPool, currentStep.prizeIndex, currentStep.type, currentStep.index]
+  );
+
+  const idleLoopHeight = useMemo(
+    () => (idleNames.length / 2) * SLOT_ITEM_HEIGHT,
+    [idleNames]
+  );
+
+  const clearSpinTimer = useCallback(() => {
+    if (spinTimerRef.current) {
+      clearTimeout(spinTimerRef.current);
+      spinTimerRef.current = null;
+    }
+  }, []);
+
+  const getItemHeight = useCallback(() => {
+    if (slotContainerRef.current) {
+      const raw = getComputedStyle(slotContainerRef.current).getPropertyValue('--slot-item-height').trim();
+      const parsed = parseFloat(raw);
+      if (parsed > 0) return parsed;
+    }
+    return SLOT_ITEM_HEIGHT;
+  }, []);
+
+  useEffect(() => () => {
+    clearSpinTimer();
+    if (idleRafRef.current) cancelAnimationFrame(idleRafRef.current);
+  }, [clearSpinTimer]);
+
+  // Bekleme ekranında sürekli akan isim bandı
+  useEffect(() => {
+    if (isSpinning || winnerTicket || drawingPool.length === 0 || idleLoopHeight === 0) {
+      if (idleRafRef.current) {
+        cancelAnimationFrame(idleRafRef.current);
+        idleRafRef.current = null;
+      }
+      return undefined;
+    }
+
+    let offset = idleScrollOffset;
+    const itemHeight = getItemHeight();
+    const loopHeight = (idleNames.length / 2) * itemHeight;
+
+    const step = () => {
+      offset += 1.4;
+      if (offset >= loopHeight) offset -= loopHeight;
+      setIdleScrollOffset(offset);
+      idleRafRef.current = requestAnimationFrame(step);
+    };
+
+    idleRafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (idleRafRef.current) cancelAnimationFrame(idleRafRef.current);
+    };
+  }, [isSpinning, winnerTicket, drawingPool.length, idleNames, getItemHeight]);
 
   // Ses Sentezleyicisi (Web Audio API)
   const playTickSound = () => {
@@ -118,71 +207,65 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
   const startDraw = () => {
     if (isSpinning || drawingPool.length === 0) return;
 
+    clearSpinTimer();
+    if (idleRafRef.current) {
+      cancelAnimationFrame(idleRafRef.current);
+      idleRafRef.current = null;
+    }
+
     setIsSpinning(true);
     setWinnerTicket(null);
 
-    // 1. Kazanan bileti rastgele seç
     const randomIndex = Math.floor(Math.random() * drawingPool.length);
     const chosenTicket = drawingPool[randomIndex];
+    chosenTicketRef.current = chosenTicket;
 
-    // 2. Arayüzde dönecek isim listesini hazırla
-    // Listeyi doldurmak için havuzdan rastgele isimler seçip sonuna kazananı ekleyeceğiz
-    const totalItems = 35; // Toplam kayacak isim sayısı
-    const tempNames = [];
-    for (let i = 0; i < totalItems - 1; i++) {
-      const idx = Math.floor(Math.random() * drawingPool.length);
-      tempNames.push(drawingPool[idx].username);
-    }
-    // Son eleman gerçek kazanan
-    tempNames.push(chosenTicket.username);
+    const totalItems = 50;
+    const tempNames = buildSpinSequence(drawingPool, chosenTicket.username, totalItems);
+    const itemHeight = getItemHeight();
     setAnimationNames(tempNames);
+    setSlotScrollOffset(0);
 
-    // 3. Slot animasyonunu başlat
-    let speed = 40; // Başlangıç milisaniye hızı (hızlı)
-    let count = 0;
+    let speed = 35;
+    let index = 0;
 
     const tick = () => {
-      setSlotIndex(count);
+      setSlotScrollOffset(index * itemHeight);
       playTickSound();
-      
-      count++;
-      if (count < totalItems) {
-        // Hızı logaritmik olarak yavaşlat
-        if (count > totalItems - 15) {
-          speed += 25; // Sonlara doğru yavaşlama
-        }
-        if (count > totalItems - 5) {
-          speed += 60; // Çok yavaşlama
-        }
-        setTimeout(tick, speed);
+
+      index += 1;
+      if (index < totalItems) {
+        if (index > totalItems - 18) speed += 22;
+        if (index > totalItems - 6) speed += 55;
+        spinTimerRef.current = setTimeout(tick, speed);
       } else {
-        // Durdu! Kazanan açıklandı
-        setTimeout(() => {
-          setWinnerTicket(chosenTicket);
+        spinTimerRef.current = setTimeout(() => {
+          const winner = chosenTicketRef.current;
+          setWinnerTicket(winner);
           setIsSpinning(false);
+          setIdleScrollOffset(0);
           playSuccessSound();
           triggerConfetti();
 
-          // Kazananı ekle ve havuzdan bu kullanıcının TÜM biletlerini sil
-          const wonUser = chosenTicket.username.toLowerCase();
-          
+          const wonUser = winner.username.toLowerCase();
+
           if (currentStep.type === 'asil') {
-            setDrawnWinners(prev => [...prev, { ...chosenTicket, prizeId: currentPrize.id, prizeName: currentPrize.name, stepIndex: currentStep.index }]);
+            setDrawnWinners((prev) => [...prev, { ...winner, prizeId: currentPrize.id, prizeName: currentPrize.name, stepIndex: currentStep.index }]);
           } else {
-            setDrawnSubstitutes(prev => [...prev, { ...chosenTicket, prizeId: currentPrize.id, prizeName: currentPrize.name, stepIndex: currentStep.index }]);
+            setDrawnSubstitutes((prev) => [...prev, { ...winner, prizeId: currentPrize.id, prizeName: currentPrize.name, stepIndex: currentStep.index }]);
           }
 
-          // Çekiliş havuzunu güncelle (kazananın diğer tüm biletlerini ele ki tekrar kazanmasın)
-          setDrawingPool(prev => prev.filter(t => t.username.toLowerCase() !== wonUser));
-        }, 300);
+          setDrawingPool((prev) => prev.filter((t) => t.username.toLowerCase() !== wonUser));
+        }, 350);
       }
     };
 
-    setTimeout(tick, speed);
+    spinTimerRef.current = setTimeout(tick, speed);
   };
 
   // Sonraki aşamaya geçiş
   const handleNextStep = () => {
+    setIdleScrollOffset(0);
     if (currentStep.type === 'asil') {
       if (currentStep.index < currentPrize.winnerCount) {
         setCurrentStep({ ...currentStep, index: currentStep.index + 1 });
@@ -222,11 +305,31 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
     [ticketsPool]
   );
 
+  const handleGenerateWinnerStory = async () => {
+    if (!winnerTicket) return;
+    setGeneratingWinnerStory(true);
+    try {
+      await generateWinnerStory({
+        brand,
+        prize: currentPrize,
+        winner: winnerTicket,
+        drawType: currentStep.type === 'yedek' ? 'yedek' : 'asil',
+        stepIndex: currentStep.index,
+        storyBackgroundId,
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Talihli story görseli oluşturulurken bir hata oluştu.');
+    } finally {
+      setGeneratingWinnerStory(false);
+    }
+  };
+
   const handleGenerateStartingStory = async () => {
     setGeneratingStartingStory(true);
     try {
       await generateStartingStory(
-        { brand, prizes: activePrizes },
+        { brand, prizes: activePrizes, storyBackgroundId },
         {
           participantCount: uniqueParticipants,
           ticketCount: ticketsPool.length,
@@ -246,7 +349,7 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
       
       {/* Marka Bilgileri Header */}
       {brand && (brand.name || brand.logo || brand.raffleName) && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '24px', background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '16px', border: '1px solid var(--glass-border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '24px', background: 'var(--bg-inset)', padding: '16px', borderRadius: '16px', border: '1px solid var(--glass-border)' }}>
           {brand.logo && <img src={brand.logo} alt="Brand Logo" style={{ height: '50px', objectFit: 'contain', borderRadius: '8px' }} />}
           <div>
             {brand.raffleName && <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--insta-yellow)' }}>{brand.raffleName}</h3>}
@@ -285,46 +388,54 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
       </div>
 
       {/* ANA ÇARK / SLOT MACHINE EKRANI */}
-      <div className="glass-container" style={{ padding: '40px 20px', textAlign: 'center', marginBottom: '24px', background: 'rgba(255,255,255,0.015)' }}>
+      <div className="glass-container" style={{ padding: '40px 20px', textAlign: 'center', marginBottom: '24px', background: 'var(--bg-muted)' }}>
         
         {currentPrize.image && (
           <div style={{ marginBottom: '20px' }}>
-            <img src={currentPrize.image} alt="Prize" style={{ maxWidth: '150px', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} />
+            <img src={currentPrize.image} alt="Prize" style={{ maxWidth: '150px', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.12)' }} />
           </div>
         )}
 
         {/* Slot Alanı */}
         <div style={{ maxWidth: '400px', margin: '0 auto 30px' }}>
-          <div className="slot-machine-container">
-            <div className="slot-indicator"></div>
-            
-            <div 
-              className="slot-list" 
-              ref={slotListRef}
-              style={{
-                transform: isSpinning 
-                  ? `translateY(-${slotIndex * 48}px)` 
-                  : winnerTicket 
-                    ? `translateY(0px)` 
-                    : `translateY(0px)`
-              }}
-            >
-              {isSpinning ? (
-                animationNames.map((name, idx) => (
-                  <div key={idx} className={`slot-item ${idx === slotIndex ? 'active' : ''}`}>
-                    @{name}
-                  </div>
-                ))
-              ) : winnerTicket ? (
+          <div className="slot-machine-container" ref={slotContainerRef}>
+            <div className="slot-indicator" />
+
+            {isSpinning ? (
+              <div
+                className="slot-list slot-list--smooth"
+                ref={slotListRef}
+                style={{ transform: `translateY(-${slotScrollOffset}px)` }}
+              >
+                {animationNames.map((name, idx) => {
+                  const itemHeight = getItemHeight();
+                  const activeIndex = Math.round(slotScrollOffset / itemHeight);
+                  return (
+                    <div key={`${name}-${idx}`} className={`slot-item ${idx === activeIndex ? 'active' : ''}`}>
+                      @{name}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : winnerTicket ? (
+              <div className="slot-list" ref={slotListRef} style={{ transform: 'translateY(0)' }}>
                 <div className="slot-item active" style={{ fontSize: '28px' }}>
                   @{winnerTicket.username}
                 </div>
-              ) : (
-                <div className="slot-item" style={{ color: 'var(--text-muted)', fontSize: '18px', fontWeight: 500 }}>
-                  Çekilişe Hazır!
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div
+                className="slot-list slot-list--idle"
+                ref={slotListRef}
+                style={{ transform: `translateY(-${idleScrollOffset}px)` }}
+              >
+                {idleNames.map((name, idx) => (
+                  <div key={`idle-${idx}-${name}`} className="slot-item" style={name === 'Çekilişe Hazır!' ? { color: 'var(--text-muted)', fontSize: '18px', fontWeight: 500 } : undefined}>
+                    {name === 'Çekilişe Hazır!' ? name : `@${name}`}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -352,25 +463,35 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
             </h1>
             
             {currentPrize.name ? (
-              <p style={{ fontStyle: 'italic', fontSize: '16px', color: 'var(--insta-yellow)', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', marginTop: '12px', border: '1px solid var(--glass-border)', display: 'inline-block', width: '100%', fontWeight: 600 }}>
+              <p style={{ fontStyle: 'italic', fontSize: '16px', color: 'var(--insta-yellow)', background: 'var(--bg-muted)', padding: '12px', borderRadius: '10px', marginTop: '12px', border: '1px solid var(--glass-border)', display: 'inline-block', width: '100%', fontWeight: 600 }}>
                 🎁 Kazandığı Ödül: {currentPrize.name}
               </p>
             ) : (
-              <p style={{ fontStyle: 'italic', fontSize: '14px', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', marginTop: '12px', border: '1px solid var(--glass-border)', display: 'inline-block', width: '100%' }}>
+              <p style={{ fontStyle: 'italic', fontSize: '14px', color: 'var(--text-muted)', background: 'var(--bg-muted)', padding: '12px', borderRadius: '10px', marginTop: '12px', border: '1px solid var(--glass-border)', display: 'inline-block', width: '100%' }}>
                 Tebrikler!
               </p>
             )}
 
             {winnerTicket.totalTickets > 1 && (
-              <span style={{ display: 'inline-block', fontSize: '11px', background: 'rgba(255,255,255,0.08)', padding: '4px 8px', borderRadius: '20px', marginTop: '10px', color: 'var(--insta-yellow)', fontWeight: 600 }}>
+              <span style={{ display: 'inline-block', fontSize: '11px', background: 'rgba(217, 119, 6, 0.12)', padding: '4px 8px', borderRadius: '20px', marginTop: '10px', color: 'var(--insta-yellow)', fontWeight: 600 }}>
                 🎫 Bu kullanıcı toplam {winnerTicket.totalTickets} bilet (hak) ile katıldı
               </span>
             )}
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ marginTop: '16px', width: '100%', background: 'linear-gradient(135deg, #fbad50, #e1306c)' }}
+              onClick={handleGenerateWinnerStory}
+              disabled={generatingWinnerStory}
+            >
+              <Share2 size={16} /> {generatingWinnerStory ? 'Oluşturuluyor...' : 'Talihli Story Oluştur'}
+            </button>
           </div>
         )}
 
         {/* Kontrol Butonları */}
-        <div style={{ marginTop: '20px' }}>
+        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
           {!winnerTicket && !isSpinning ? (
             <button 
               className="btn btn-primary pulse-glow" 
@@ -415,9 +536,9 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
                      const winner = prizeWinners.find(w => w.stepIndex === idx + 1);
                      const isActive = currentStep.prizeIndex === pIdx && currentStep.type === 'asil' && currentStep.index === idx + 1;
                      return (
-                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: isActive ? 'rgba(255,255,255,0.1)' : winner ? 'rgba(225,48,108,0.06)' : 'rgba(255,255,255,0.02)', border: '1px solid', borderColor: isActive ? 'var(--insta-pink)' : winner ? 'rgba(225,48,108,0.2)' : 'var(--glass-border)', borderRadius: '6px', fontSize: '12px', marginTop: '4px' }}>
+                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: isActive ? 'rgba(219, 39, 119, 0.1)' : winner ? 'rgba(219, 39, 119, 0.06)' : 'var(--bg-muted)', border: '1px solid', borderColor: isActive ? 'var(--insta-pink)' : winner ? 'rgba(225,48,108,0.2)' : 'var(--glass-border)', borderRadius: '6px', fontSize: '12px', marginTop: '4px' }}>
                          <span style={{ fontWeight: 600 }}>{idx + 1}. Asil:</span>
-                         <span style={{ color: winner ? '#fff' : 'var(--text-muted)' }}>{winner ? `@${winner.username}` : 'Çekilmedi'}</span>
+                         <span style={{ color: winner ? 'var(--text-main)' : 'var(--text-muted)' }}>{winner ? `@${winner.username}` : 'Çekilmedi'}</span>
                        </div>
                      );
                    })}
@@ -443,9 +564,9 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, onDrawComp
                      const sub = prizeSubs.find(s => s.stepIndex === idx + 1);
                      const isActive = currentStep.prizeIndex === pIdx && currentStep.type === 'yedek' && currentStep.index === idx + 1;
                      return (
-                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: isActive ? 'rgba(255,255,255,0.1)' : sub ? 'rgba(251,173,80,0.06)' : 'rgba(255,255,255,0.02)', border: '1px solid', borderColor: isActive ? 'var(--insta-orange)' : sub ? 'rgba(251,173,80,0.2)' : 'var(--glass-border)', borderRadius: '6px', fontSize: '12px', marginTop: '4px' }}>
+                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: isActive ? 'rgba(234, 88, 12, 0.1)' : sub ? 'rgba(234, 88, 12, 0.06)' : 'var(--bg-muted)', border: '1px solid', borderColor: isActive ? 'var(--insta-orange)' : sub ? 'rgba(251,173,80,0.2)' : 'var(--glass-border)', borderRadius: '6px', fontSize: '12px', marginTop: '4px' }}>
                          <span style={{ fontWeight: 600 }}>{idx + 1}. Yedek:</span>
-                         <span style={{ color: sub ? '#fff' : 'var(--text-muted)' }}>{sub ? `@${sub.username}` : 'Çekilmedi'}</span>
+                         <span style={{ color: sub ? 'var(--text-main)' : 'var(--text-muted)' }}>{sub ? `@${sub.username}` : 'Çekilmedi'}</span>
                        </div>
                      );
                    })}

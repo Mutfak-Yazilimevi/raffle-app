@@ -1,6 +1,51 @@
 const SETUP_KEY = 'raffle_setup_state';
+const RESULTS_KEY = 'raffle_last_draw_results';
 const IMAGES_DB = 'raffle_setup_images';
 const IMAGES_STORE = 'images';
+
+export function isRaffleConfigured(state) {
+  if (!state) return false;
+  const brand = state.brand || {};
+  const prizes = state.prizes || [];
+  return Boolean(
+    brand.raffleName?.trim() ||
+    brand.name?.trim() ||
+    prizes.some((p) => p.name?.trim())
+  );
+}
+
+export function deriveRafflePhase(setupState, drawResults) {
+  if (drawResults?.winners?.length > 0) return 'completed';
+  if (isRaffleConfigured(setupState)) return 'configured';
+  return 'empty';
+}
+
+export function loadDrawResults() {
+  const raw = localStorage.getItem(RESULTS_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.winners)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveDrawResults(results) {
+  return trySetLocalStorage(
+    RESULTS_KEY,
+    JSON.stringify({
+      winners: results.winners || [],
+      substitutes: results.substitutes || [],
+      completedAt: new Date().toISOString(),
+    })
+  );
+}
+
+export function clearDrawResults() {
+  localStorage.removeItem(RESULTS_KEY);
+}
 
 function openImagesDb() {
   return new Promise((resolve, reject) => {
@@ -68,6 +113,11 @@ function toLightweightState(state) {
     keywordRequired: state.keywordRequired,
     keywordBlacklist: state.keywordBlacklist,
     userBlacklist: state.userBlacklist,
+    requiredFollowAccounts: state.requiredFollowAccounts,
+    minRequiredFollows: state.minRequiredFollows,
+    followVerification: state.followVerification,
+    showPrizeProductsInResultsStory: state.showPrizeProductsInResultsStory,
+    storyBackgroundId: state.storyBackgroundId,
   };
 }
 
