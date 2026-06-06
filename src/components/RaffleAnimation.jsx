@@ -8,6 +8,12 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
   const [drawnWinners, setDrawnWinners] = useState([]);
   const [drawnSubstitutes, setDrawnSubstitutes] = useState([]);
   
+  // useRef ile state'in güncel halini senkron tutuyoruz (stale closure önlemi)
+  const drawnWinnersRef = useRef(drawnWinners);
+  const drawnSubstitutesRef = useRef(drawnSubstitutes);
+  useEffect(() => { drawnWinnersRef.current = drawnWinners; }, [drawnWinners]);
+  useEffect(() => { drawnSubstitutesRef.current = drawnSubstitutes; }, [drawnSubstitutes]);
+  
   // Çekiliş Aşaması Durumu
   // currentStep: { type: 'asil' | 'yedek', index: number }
   const [currentStep, setCurrentStep] = useState({ type: 'asil', index: 1 });
@@ -129,7 +135,6 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
     setAnimationNames(tempNames);
 
     // 3. Slot animasyonunu başlat
-    let currentPos = 0;
     let speed = 40; // Başlangıç milisaniye hızı (hızlı)
     let count = 0;
 
@@ -184,7 +189,7 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
         setWinnerTicket(null);
       } else {
         // Çekiliş bitti
-        onDrawComplete({ winners: drawnWinners, substitutes: drawnSubstitutes });
+        onDrawComplete({ winners: drawnWinnersRef.current, substitutes: drawnSubstitutesRef.current });
       }
     } else {
       if (currentStep.index < substituteCount) {
@@ -192,7 +197,7 @@ export default function RaffleAnimation({ ticketsPool, winnerCount, substituteCo
         setWinnerTicket(null);
       } else {
         // Çekiliş bitti
-        onDrawComplete({ winners: drawnWinners, substitutes: drawnSubstitutes });
+        onDrawComplete({ winners: drawnWinnersRef.current, substitutes: drawnSubstitutesRef.current });
       }
     }
   };

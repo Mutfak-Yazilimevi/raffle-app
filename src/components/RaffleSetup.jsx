@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Upload, Users, ListFilter, Play, Info, Trash2, CheckCircle } from 'lucide-react';
 
-const MOCK_USERS = [
-  'ahmet_yılmaz', 'merve_kaya', 'can_demir', 'elif_sahin', 'burak_avci', 
-  'selin_ozdemir', 'kemal_aslan', 'deniz_aksoy', 'fatma_celik', 'murat_kara',
-  'buse_tekin', 'gokhan_yilmaz', 'zeynep_durmaz', 'oguzhan_unal', 'gamze_sari'
-];
-
 const MOCK_COMMENTS_PRESET = [
   { username: 'ahmet_yılmaz', text: 'Harika bir çekiliş! Katılıyorum @merve_kaya @can_demir @elif_sahin' },
   { username: 'merve_kaya', text: 'Umarım bana çıkar #cekilis @ahmet_yılmaz @can_demir' },
@@ -375,14 +369,14 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
             <CheckCircle color="#10b981" size={24} />
             <div>
               <h4 style={{ margin: 0, color: '#10b981', fontWeight: 700 }}>Eklentiden Yorumlar Aktarıldı!</h4>
-              <p style={{ margin: 0, fontSize: '13px', color: var(--text-muted) }}>Instagram eklentiniz üzerinden {importedComments.length} yorum başarıyla yüklendi.</p>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>Instagram eklentiniz üzerinden {importedComments.length} yorum başarıyla yüklendi.</p>
             </div>
           </div>
           <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={clearData}>Temizle</button>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'window.innerWidth > 960 ? "1fr 1fr" : "1fr"', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
         
         {/* YORUM GİRİŞ ALANI */}
         <div className="glass-container" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
@@ -476,7 +470,7 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
             </div>
           </div>
 
-          <div style={{ borderTop: '1px solid var(--glass-border)', margin: '16px 0', paddingPoint: '16px' }}></div>
+          <div style={{ borderTop: '1px solid var(--glass-border)', margin: '16px 0', paddingTop: '16px' }}></div>
 
           <h4 style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <ListFilter size={16} color="var(--insta-orange)" /> Arkadaş Etiketleme Filtreleri

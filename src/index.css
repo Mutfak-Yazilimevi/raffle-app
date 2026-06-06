@@ -294,3 +294,36 @@ body {
   pointer-events: none;
   z-index: 9999;
 }
+
+/* Spin Animation (Çekiliş butonu) */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
+
+  .glass-container {
+    border-radius: 16px;
+    padding: 16px;
+  }
+
+  .slot-machine-container {
+    height: 100px;
+  }
+
+  .slot-item {
+    font-size: 18px;
+    height: 40px;
+    line-height: 40px;
+  }
+}
+
