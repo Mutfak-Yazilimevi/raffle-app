@@ -1,13 +1,19 @@
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { platform } from 'node:os';
 
-const publicDir = 'public';
+const publicDir = resolve(process.cwd(), 'public');
 const zipPath = join(publicDir, 'instagram-raffle-helper.zip');
+const extensionDir = resolve(process.cwd(), 'chrome-extension');
 
 if (!existsSync(publicDir)) {
   mkdirSync(publicDir, { recursive: true });
+}
+
+if (!existsSync(extensionDir)) {
+  console.error(`chrome-extension klasörü bulunamadı: ${extensionDir}`);
+  process.exit(1);
 }
 
 if (existsSync(zipPath)) {
@@ -18,16 +24,18 @@ const isWindows = platform() === 'win32';
 
 try {
   if (isWindows) {
-    const source = join(process.cwd(), 'chrome-extension', '*');
-    const dest = join(process.cwd(), zipPath);
+    const source = join(extensionDir, '*');
     execSync(
-      `powershell -NoProfile -Command "Compress-Archive -Path '${source}' -DestinationPath '${dest}' -Force"`,
+      `powershell -NoProfile -Command "Compress-Archive -Path '${source}' -DestinationPath '${zipPath}' -Force"`,
       { stdio: 'inherit' }
     );
   } else {
-    execSync(`zip -r "${zipPath}" .`, { cwd: 'chrome-extension', stdio: 'inherit' });
+    execSync(`zip -r ${JSON.stringify(zipPath)} .`, {
+      cwd: extensionDir,
+      stdio: 'inherit',
+    });
   }
-  console.log(`Extension packaged: ${zipPath}`);
+  console.log(`Extension packaged: ${join('public', 'instagram-raffle-helper.zip')}`);
 } catch (err) {
   console.error('Extension zip could not be created:', err.message);
   process.exit(1);
