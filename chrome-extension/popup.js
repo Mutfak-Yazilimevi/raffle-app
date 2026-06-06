@@ -55,8 +55,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'SCRAPE_UPDATE') {
       commentCountEl.textContent = message.count;
-      // İlerleme çubuğu animasyonu için küçük bir hareket
-      progressBar.style.width = `${Math.min(message.count * 0.5, 100)}%`;
+      progressBar.style.width = `${Math.min(20 + message.count * 2, 100)}%`;
+      if (message.count > 0) {
+        btnExport.disabled = false;
+      }
     }
   });
 

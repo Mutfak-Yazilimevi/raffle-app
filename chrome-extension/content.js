@@ -1,140 +1,274 @@
 // Instagram Çekiliş Yardımcısı - Content Script
+
+const SKIP_USERNAMES = new Set([
+  'explore', 'accounts', 'direct', 'reels', 'stories', 'p', 'reel', 'tags', 'locations', 'about', 'legal'
+]);
+
+const NOISE_PATTERNS = [
+  /^\d+[gsqd]$/i,
+  /^\d+\s*(gün|saat|dakika|hafta|g|s|d|h|yıl)/i,
+  /^(Yanıtla|Reply|Beğen|Like|Paylaş|Share|Gönder|Send)$/i,
+  /^(Diğer yanıtları gör|View replies|Hide replies|Yanıtları gizle)/i,
+  /^Beğenildi/i,
+  /^Verified$/i,
+];
+
 let scrapingInterval = null;
-let collectedComments = [];
+let observer = null;
+let commentsMap = new Map();
+let commentUl = null;
+let scrollContainer = null;
+let lastNotifyTime = 0;
+let lastScrapeTime = 0;
 
-// Sayfadaki yorumları ayrıştıran fonksiyon
-function scrapeInstagramComments() {
-  const commentsMap = new Map(); // Mükerrerleri (aynı yorum satırını) geçici olarak önlemek için
-  const listItems = document.querySelectorAll('ul li');
+function isNoise(text) {
+  return NOISE_PATTERNS.some((pattern) => pattern.test(text));
+}
 
-  listItems.forEach(li => {
-    try {
-      // Kullanıcı adını bul (Genellikle h2, h3 veya role="link" olan a etiketleri)
-      const userEl = li.querySelector('h2 a, h3 a, a[role="link"], a[href^="/"]');
-      if (!userEl) return;
+function extractUsername(link) {
+  const href = link.getAttribute('href') || '';
+  const match = href.match(/^\/([^/?#]+)\/?$/);
+  if (!match) return null;
+  const name = match[1].toLowerCase();
+  if (SKIP_USERNAMES.has(name)) return null;
+  return match[1];
+}
 
-      const username = userEl.textContent.trim().replace('@', '');
-      if (!username || username === 'Instagram') return;
+function parseCommentLi(li) {
+  const userLinks = li.querySelectorAll('a[href^="/"]');
+  let username = null;
 
-      // Yorum metnini bul
-      const spans = li.querySelectorAll('span');
-      let commentText = "";
-
-      spans.forEach(span => {
-        const text = span.textContent.trim();
-        if (
-          text &&
-          text !== username &&
-          !text.match(/^\d+[gsqd]$/) && // 2g, 5s, 10d vb. süre etiketleri
-          !text.match(/^\d+\s*(gün|saat|dakika|hafta|g|s|d|h|yıl)/i) &&
-          !text.includes('Yanıtla') &&
-          !text.includes('Reply') &&
-          !text.includes('Beğen') &&
-          !text.includes('Like') &&
-          !text.startsWith('Diğer yanıtları gör') &&
-          !text.startsWith('View replies')
-        ) {
-          // En uzun anlamlı metni yorum metni olarak kabul et
-          if (text.length > commentText.length) {
-            commentText = text;
-          }
-        }
-      });
-
-      if (username && commentText) {
-        // Benzersiz bir anahtar oluştur (kullanıcı ve yorum birleşimi)
-        const key = `${username}:${commentText}`;
-        commentsMap.set(key, { username, text: commentText });
-      }
-    } catch (err) {
-      console.error('Yorum ayrıştırılamadı:', err);
+  for (const link of userLinks) {
+    const found = extractUsername(link);
+    if (found) {
+      username = found;
+      break;
     }
+  }
+  if (!username) return null;
+
+  let commentText = '';
+  const spans = li.querySelectorAll('span[dir="auto"]');
+
+  for (const span of spans) {
+    const text = span.textContent.trim();
+    if (!text || text === username) continue;
+    if (text.startsWith('@') && !text.includes(' ')) continue;
+    if (isNoise(text)) continue;
+    if (text.length > commentText.length) commentText = text;
+  }
+
+  if (!commentText) {
+    const heading = li.querySelector('h1');
+    if (heading) {
+      const text = heading.textContent.trim();
+      if (text && text !== username && !isNoise(text)) commentText = text;
+    }
+  }
+
+  if (!username || !commentText) return null;
+  return { username, text: commentText };
+}
+
+function findCommentSection() {
+  const dialog = document.querySelector('div[role="dialog"]');
+  const root = dialog || document.querySelector('main') || document;
+
+  let bestUl = null;
+  let bestScore = 0;
+
+  for (const ul of root.querySelectorAll('ul')) {
+    const directItems = ul.querySelectorAll(':scope > li');
+    if (directItems.length < 1) continue;
+
+    let score = directItems.length;
+    const sample = directItems[0];
+    if (sample?.querySelector('a[href^="/"]') && sample?.querySelector('span[dir="auto"], h1')) {
+      score += 20;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestUl = ul;
+    }
+  }
+
+  return bestUl;
+}
+
+function findScrollContainer(element) {
+  let parent = element?.parentElement;
+  while (parent && parent !== document.body) {
+    const style = window.getComputedStyle(parent);
+    const canScroll =
+      style.overflowY === 'auto' ||
+      style.overflowY === 'scroll' ||
+      style.overflowY === 'overlay';
+
+    if (canScroll && parent.scrollHeight > parent.clientHeight + 20) {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return null;
+}
+
+function refreshCommentTargets() {
+  commentUl = findCommentSection();
+  scrollContainer = commentUl
+    ? findScrollContainer(commentUl) || findScrollContainer(commentUl.parentElement)
+    : null;
+}
+
+function scrapeVisibleComments() {
+  const now = Date.now();
+  if (now - lastScrapeTime < 150) {
+    return commentsMap.size;
+  }
+  lastScrapeTime = now;
+
+  if (!commentUl) refreshCommentTargets();
+  if (!commentUl) return commentsMap.size;
+
+  for (const li of commentUl.querySelectorAll(':scope > li')) {
+    const parsed = parseCommentLi(li);
+    if (parsed) {
+      commentsMap.set(`${parsed.username.toLowerCase()}:${parsed.text}`, parsed);
+    }
+  }
+
+  return commentsMap.size;
+}
+
+function notifyPopup(force = false) {
+  const now = Date.now();
+  if (!force && now - lastNotifyTime < 350) return;
+  lastNotifyTime = now;
+
+  chrome.runtime.sendMessage({
+    type: 'SCRAPE_UPDATE',
+    count: commentsMap.size,
+  }).catch(() => {});
+}
+
+function clickLoadMoreButtons() {
+  const root = document.querySelector('div[role="dialog"]') || document;
+  const selectors = 'button, div[role="button"], span[role="button"], a[role="button"]';
+
+  for (const el of root.querySelectorAll(selectors)) {
+    const text = (el.textContent || '').trim().toLowerCase();
+    const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+    const combined = `${text} ${aria}`;
+
+    const isCommentLoader =
+      (combined.includes('yorum') && (
+        combined.includes('daha fazla') ||
+        combined.includes('tüm') ||
+        combined.includes('view') ||
+        combined.includes('load')
+      )) ||
+      combined.includes('more comment') ||
+      combined.includes('view all') ||
+      combined.includes('view replies') ||
+      combined.includes('yanıtları gör');
+
+    if (isCommentLoader) {
+      try { el.click(); } catch (_) { /* ignore */ }
+    }
+  }
+
+  for (const svg of root.querySelectorAll('svg[aria-label]')) {
+    const label = (svg.getAttribute('aria-label') || '').toLowerCase();
+    if (label.includes('yorum') || label.includes('comment')) {
+      const btn = svg.closest('button, div[role="button"]');
+      if (btn) {
+        try { btn.click(); } catch (_) { /* ignore */ }
+      }
+    }
+  }
+}
+
+function autoScrollStep() {
+  clickLoadMoreButtons();
+
+  if (!commentUl) refreshCommentTargets();
+
+  if (scrollContainer) {
+    scrollContainer.scrollTop += Math.max(400, scrollContainer.clientHeight * 0.85);
+    if (scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10) {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+    }
+  } else if (commentUl) {
+    commentUl.lastElementChild?.scrollIntoView({ block: 'end', behavior: 'instant' });
+  }
+
+  const count = scrapeVisibleComments();
+  notifyPopup();
+  return count;
+}
+
+function startObserver() {
+  stopObserver();
+  if (!commentUl) return;
+
+  observer = new MutationObserver(() => {
+    scrapeVisibleComments();
+    notifyPopup();
   });
 
+  observer.observe(commentUl, { childList: true, subtree: true });
+}
+
+function stopObserver() {
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+}
+
+function resetState() {
+  commentsMap = new Map();
+  commentUl = null;
+  scrollContainer = null;
+  lastNotifyTime = 0;
+  lastScrapeTime = 0;
+}
+
+function getCommentsArray() {
   return Array.from(commentsMap.values());
 }
 
-// Otomatik kaydırma ve buton tıklama fonksiyonu
-function autoScrollComments() {
-  // Instagram'da yorumların bulunduğu scrollable div'i bul
-  // Genelde gönderi modalında ul etiketinin üst veya 2 üst div'idir.
-  const ul = document.querySelector('ul');
-  let scrollContainer = window;
-
-  if (ul) {
-    let parent = ul.parentElement;
-    // Scroll edilebilir ana container'ı bulana kadar yukarı çık
-    while (parent && parent !== document.body) {
-      const overflowY = window.getComputedStyle(parent).overflowY;
-      if (overflowY === 'scroll' || overflowY === 'auto') {
-        scrollContainer = parent;
-        break;
-      }
-      parent = parent.parentElement;
-    }
-  }
-
-  // 1. Aşağı kaydır
-  if (scrollContainer === window) {
-    window.scrollTo(0, document.body.scrollHeight);
-  } else {
-    scrollContainer.scrollTop = scrollContainer.scrollHeight;
-  }
-
-  // 2. "Daha fazla yorum yükle" (Plus / Daire) butonunu bul ve tıkla
-  // Instagram'da bu buton genellikle bir SVG barındırır (artı simgesi) veya role="button" dır.
-  const buttons = document.querySelectorAll('button[type="button"], div[role="button"]');
-  buttons.forEach(btn => {
-    const text = btn.textContent.trim();
-    const svg = btn.querySelector('svg');
-    // Artı simgesini (load more) veya "Daha fazla yorum yükle" yazılarını yakalayalım
-    if (
-      text.includes('Daha fazla') ||
-      text.includes('Yorum yükle') ||
-      text.includes('Load more') ||
-      (svg && svg.getAttribute('aria-label') === 'Daha fazla yorum yükle') ||
-      (svg && svg.getAttribute('aria-label') === 'Load more comments')
-    ) {
-      btn.click();
-    }
-  });
-
-  // 3. Yorumları çek ve güncelle
-  collectedComments = scrapeInstagramComments();
-
-  // Popup'a canlı sayıyı gönder
-  chrome.runtime.sendMessage({
-    type: 'SCRAPE_UPDATE',
-    count: collectedComments.length
-  });
-}
-
-// Mesaj dinleyici
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === 'PING') {
+    sendResponse({ ok: true });
+    return true;
+  }
+
   if (request.type === 'START_SCRAPING') {
     if (scrapingInterval) clearInterval(scrapingInterval);
-    
-    collectedComments = scrapeInstagramComments();
-    autoScrollComments();
-    
-    // Her 1.5 saniyede bir kaydır ve yeni yorumları tara
-    scrapingInterval = setInterval(autoScrollComments, 1500);
-    sendResponse({ status: 'started', count: collectedComments.length });
-  } 
-  
-  else if (request.type === 'STOP_SCRAPING') {
+
+    resetState();
+    clickLoadMoreButtons();
+    refreshCommentTargets();
+    scrapeVisibleComments();
+    startObserver();
+
+    autoScrollStep();
+    scrapingInterval = setInterval(autoScrollStep, 700);
+
+    sendResponse({ status: 'started', count: commentsMap.size });
+  } else if (request.type === 'STOP_SCRAPING') {
     if (scrapingInterval) {
       clearInterval(scrapingInterval);
       scrapingInterval = null;
     }
-    collectedComments = scrapeInstagramComments();
-    sendResponse({ status: 'stopped', count: collectedComments.length });
-  } 
-  
-  else if (request.type === 'GET_COMMENTS') {
-    collectedComments = scrapeInstagramComments();
-    sendResponse({ comments: collectedComments });
+    stopObserver();
+    scrapeVisibleComments();
+    sendResponse({ status: 'stopped', count: commentsMap.size });
+  } else if (request.type === 'GET_COMMENTS') {
+    scrapeVisibleComments();
+    sendResponse({ comments: getCommentsArray() });
   }
-  
-  return true; // Asenkron yanıt için true dönüyoruz
+
+  return true;
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Settings, Upload, Users, ListFilter, Play, Info, Trash2, CheckCircle, Award, Image as ImageIcon, Puzzle, Download, ExternalLink } from 'lucide-react';
 import { LINKS } from '../config';
 import { downloadChromeExtension } from '../utils/downloadExtension';
@@ -143,24 +143,29 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
   useEffect(() => {
     if (importedComments && importedComments.length > 0) {
       setComments(importedComments);
-      // Düz metin alanına da görsel olarak yazalım
-      const text = importedComments.map(c => `${c.username}\n${c.text}`).join('\n\n');
-      setRawText(text);
+      setRawText(`${importedComments.length} yorum eklentiden yüklendi. (Liste performans için gizlendi)`);
     }
   }, [importedComments]);
+
+  const parseDebounceRef = useRef(null);
 
   // Manuel yapıştırılan veriyi ayrıştır
   const handleTextChange = (e) => {
     const text = e.target.value;
     setRawText(text);
+
+    if (parseDebounceRef.current) {
+      clearTimeout(parseDebounceRef.current);
+    }
+
     if (!text.trim()) {
       setComments([]);
       return;
     }
-    
-    // Satır satır ayrıştırma
-    const parsed = parseRawText(text);
-    setComments(parsed);
+
+    parseDebounceRef.current = setTimeout(() => {
+      setComments(parseRawText(text));
+    }, 250);
   };
 
   const parseRawText = (text) => {
@@ -429,7 +434,10 @@ export default function RaffleSetup({ onSetupComplete, importedComments, onClear
     return tickets;
   };
 
-  const ticketsPool = getFilteredTickets();
+  const ticketsPool = useMemo(
+    () => getFilteredTickets(),
+    [comments, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist]
+  );
   // Benzersiz katılımcı sayısı
   const uniqueParticipantsCount = Array.from(new Set(ticketsPool.map(t => t.username.toLowerCase()))).length;
 
