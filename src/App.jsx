@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Award, Compass, Puzzle, Megaphone } from 'lucide-react';
 import { LINKS } from './config';
 import { useRaffleForm } from './hooks/useRaffleForm';
@@ -9,8 +9,13 @@ import RaffleAnimation from './components/RaffleAnimation';
 import RaffleResults from './components/RaffleResults';
 import ExtensionPage from './components/ExtensionPage';
 import StepProgress from './components/StepProgress';
+import { APP_DISPLAY_NAME, APP_TAGLINE } from './utils/appBranding';
 import {
-  deriveRafflePhase,
+  ensureRegistryInitialized,
+  listRaffleEntries,
+  createRaffle,
+  setActiveRaffleId,
+  getActiveRaffleId,
   loadDrawResults,
   saveDrawResults,
   clearDrawResults,
@@ -21,7 +26,10 @@ export default function App() {
   const [raffleStep, setRaffleStep] = useState('config');
   const [drawStage, setDrawStage] = useState('animation');
   const [importedComments, setImportedComments] = useState([]);
-  const [savedDrawResults, setSavedDrawResults] = useState(() => loadDrawResults());
+  const [activeRaffleId, setActiveRaffleIdState] = useState(null);
+  const [raffleEntries, setRaffleEntries] = useState([]);
+  const [registryReady, setRegistryReady] = useState(false);
+  const [savedDrawResults, setSavedDrawResults] = useState(null);
 
   const [raffleConfig, setRaffleConfig] = useState({
     ticketsPool: [],
@@ -40,27 +48,51 @@ export default function App() {
     setImportedComments([]);
   };
 
-  const form = useRaffleForm({ importedComments, onClearImported: handleClearImported });
+  const form = useRaffleForm({
+    importedComments,
+    onClearImported: handleClearImported,
+    activeRaffleId: registryReady ? activeRaffleId : null,
+  });
 
-  const phase = useMemo(
-    () => deriveRafflePhase(
-      {
-        brand: form.brand,
-        prizes: form.prizes,
-      },
-      savedDrawResults
-    ),
-    [form.brand, form.prizes, savedDrawResults]
-  );
+  const refreshRaffleList = useCallback(async () => {
+    await ensureRegistryInitialized();
+    const entries = await listRaffleEntries();
+    setRaffleEntries(entries);
+    const activeId = getActiveRaffleId();
+    setActiveRaffleIdState(activeId);
+    if (activeId) {
+      setSavedDrawResults(loadDrawResults(activeId));
+    }
+  }, []);
 
-  const openStudio = (step) => {
+  useEffect(() => {
+    ensureRegistryInitialized().then(() => {
+      setRegistryReady(true);
+      refreshRaffleList();
+    });
+  }, [refreshRaffleList]);
+
+  const selectRaffle = useCallback((raffleId) => {
+    setActiveRaffleId(raffleId);
+    setActiveRaffleIdState(raffleId);
+    setSavedDrawResults(loadDrawResults(raffleId));
+  }, []);
+
+  const openStudio = useCallback(async (step, raffleId) => {
+    let id = raffleId || activeRaffleId;
+    if (!id) {
+      id = await createRaffle();
+      await refreshRaffleList();
+    }
+    selectRaffle(id);
     setView('studio');
     setRaffleStep(step);
     if (step !== 'draw') setDrawStage('animation');
-  };
+  }, [activeRaffleId, refreshRaffleList, selectRaffle]);
 
   const goToAnnouncement = () => {
     setView('announcement');
+    refreshRaffleList();
   };
 
   useEffect(() => {
@@ -78,7 +110,7 @@ export default function App() {
       }
     };
 
-    checkImportedData();
+    if (registryReady) checkImportedData();
 
     const handleStorageChange = (e) => {
       if (e.key === 'instagram_comments_import') checkImportedData();
@@ -86,11 +118,11 @@ export default function App() {
 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  }, [registryReady, openStudio]);
 
   const handleStartDraw = () => {
     if (!form.validateStart()) return;
-    clearDrawResults();
+    if (activeRaffleId) clearDrawResults(activeRaffleId);
     setSavedDrawResults(null);
     setRaffleConfig(form.buildSetupConfig());
     setRaffleStep('draw');
@@ -99,22 +131,36 @@ export default function App() {
 
   const handleDrawComplete = (drawResults) => {
     setResults(drawResults);
-    saveDrawResults(drawResults);
-    setSavedDrawResults(loadDrawResults());
+    if (activeRaffleId) {
+      saveDrawResults(drawResults, activeRaffleId);
+      setSavedDrawResults(loadDrawResults(activeRaffleId));
+    }
+    refreshRaffleList();
     setDrawStage('results');
   };
 
   const handleReset = () => {
-    clearDrawResults();
+    if (activeRaffleId) clearDrawResults(activeRaffleId);
     setSavedDrawResults(null);
     setResults({ winners: [], substitutes: [] });
     setRaffleStep('config');
     setDrawStage('animation');
     setView('announcement');
+    refreshRaffleList();
+  };
+
+  const handleCreateRaffle = async () => {
+    const id = await createRaffle();
+    selectRaffle(id);
+    await refreshRaffleList();
+    setView('studio');
+    setRaffleStep('config');
+    setDrawStage('animation');
   };
 
   const handleLogoClick = () => {
     setView('announcement');
+    refreshRaffleList();
   };
 
   const currentProgressStep = raffleStep === 'draw' ? 'draw' : raffleStep;
@@ -122,7 +168,7 @@ export default function App() {
   const stageLabel = view === 'extension'
     ? 'Chrome Eklentisi'
     : view === 'announcement'
-      ? phase === 'completed' ? 'Sonuçlar' : phase === 'configured' ? 'İlan' : 'Ana Sayfa'
+      ? 'İlanlar'
       : raffleStep === 'config'
         ? 'Kurallar'
         : raffleStep === 'comments'
@@ -166,10 +212,10 @@ export default function App() {
             </div>
             <div>
               <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.3px', margin: 0 }}>
-                Raffle<span className="gradient-text">Studio</span>
+                Mutfak<span className="gradient-text">RaffleStudio</span>
               </h1>
               <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', fontWeight: 500, marginTop: '-2px' }}>
-                Premium Instagram Giveaway Engine
+                {APP_TAGLINE}
               </span>
             </div>
           </div>
@@ -231,7 +277,7 @@ export default function App() {
             {view === 'announcement' && (
               <button
                 type="button"
-                onClick={() => openStudio('config')}
+                onClick={handleCreateRaffle}
                 style={{
                   fontSize: '12px',
                   color: 'var(--insta-yellow)',
@@ -246,7 +292,7 @@ export default function App() {
                   fontWeight: 600,
                 }}
               >
-                <Puzzle size={14} /> Hemen Çekiliş
+                <Puzzle size={14} /> Yeni Çekiliş
               </button>
             )}
 
@@ -265,12 +311,10 @@ export default function App() {
       <main style={{ flexGrow: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '30px 0', width: '100%' }}>
         {view === 'announcement' && (
           <RaffleAnnouncement
-            form={form}
-            phase={phase}
-            drawResults={savedDrawResults}
-            onDefineConfig={() => openStudio('config')}
-            onStartScheduled={() => openStudio('comments')}
-            onQuickStart={() => openStudio('config')}
+            raffleEntries={raffleEntries}
+            onCreateRaffle={handleCreateRaffle}
+            onDefineConfig={(id) => openStudio('config', id)}
+            onStartScheduled={(id) => openStudio('comments', id)}
           />
         )}
 
@@ -314,9 +358,7 @@ export default function App() {
             prizes={raffleConfig.prizes}
             showPrizeProductsInResultsStory={Boolean(raffleConfig.rules?.showPrizeProductsInResultsStory)}
             storyBackgroundId={raffleConfig.rules?.storyBackgroundId}
-            requiredFollowAccounts={raffleConfig.rules?.requiredFollowAccounts}
-            minRequiredFollows={raffleConfig.rules?.minRequiredFollows}
-            followVerification={raffleConfig.rules?.followVerification || {}}
+            rules={raffleConfig.rules || {}}
             onReset={handleReset}
             onBackToAnnouncement={goToAnnouncement}
           />
@@ -324,7 +366,7 @@ export default function App() {
       </main>
 
       <footer style={{ borderTop: '1px solid var(--glass-border)', padding: '20px 24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', background: 'var(--bg-footer)' }}>
-        <p>© 2026 Mutfak Yazılımevi - Instagram Çekiliş Stüdyosu. Tüm hakları saklıdır. Verileriniz tamamen yerel tarayıcınızda işlenir.</p>
+        <p>© 2026 {APP_DISPLAY_NAME} · Mutfak Yazılımevi. Tüm hakları saklıdır. Verileriniz tamamen yerel tarayıcınızda işlenir.</p>
       </footer>
     </div>
   );

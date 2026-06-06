@@ -4,6 +4,8 @@ import {
   initStoryCanvas,
   downloadCanvasAsPng,
   wrapText,
+  drawStoryAttribution,
+  drawStoryBrandHeader,
   STORY_WIDTH,
 } from './storyCanvas';
 
@@ -51,60 +53,41 @@ export async function generateWinnerStory({
 
   const { canvas, ctx, theme, p } = initStoryCanvas(storyBackgroundId, 100, 1720);
 
-  ctx.strokeStyle = isAsil ? 'rgba(252, 204, 99, 0.4)' : 'rgba(251, 173, 80, 0.35)';
-  ctx.lineWidth = 8;
+  let y = await drawStoryBrandHeader(ctx, brand, p, 130, {
+    logoMaxSize: 88,
+    raffleFont: 'bold 42px Outfit',
+    raffleLineHeight: 50,
+    bottomGap: 20,
+    raffleFallback: 'ÇEKİLİŞ',
+  });
+
+  drawWinnerBadge(ctx, badgeLabel, y + 40, badgeColors);
+  y += 96;
+
+  const contentCenterY = y + 220;
+  ctx.strokeStyle = isAsil ? 'rgba(252, 204, 99, 0.35)' : 'rgba(251, 173, 80, 0.3)';
+  ctx.lineWidth = 6;
   ctx.beginPath();
-  ctx.arc(STORY_WIDTH / 2, 680, 300, 0, Math.PI * 2);
+  ctx.arc(STORY_WIDTH / 2, contentCenterY, 260, 0, Math.PI * 2);
   ctx.stroke();
 
-  let y = 160;
-
-  if (brand?.logo) {
-    try {
-      const logoImg = await loadImage(brand.logo);
-      const logoSize = 90;
-      const aspect = logoImg.width / logoImg.height;
-      let drawW = logoSize;
-      let drawH = logoSize;
-      if (aspect > 1) drawH = logoSize / aspect;
-      else drawW = logoSize * aspect;
-      ctx.drawImage(logoImg, STORY_WIDTH / 2 - drawW / 2, y, drawW, drawH);
-      y += drawH + 24;
-    } catch {
-      // devam
-    }
-  }
+  ctx.strokeStyle = p.divider;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(STORY_WIDTH / 2, contentCenterY, 300, 0, Math.PI * 2);
+  ctx.stroke();
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = p.textSecondary;
-  ctx.font = '600 30px Inter';
-  if (brand?.raffleName) {
-    const titleLines = wrapText(ctx, brand.raffleName.toUpperCase(), 860);
-    for (const line of titleLines.slice(0, 2)) {
-      ctx.fillText(line, STORY_WIDTH / 2, y);
-      y += 38;
-    }
-  }
-  if (brand?.name) {
-    ctx.fillStyle = p.textMuted;
-    ctx.font = '500 26px Inter';
-    ctx.fillText(brand.name, STORY_WIDTH / 2, y + 8);
-    y += 40;
-  }
-
-  drawWinnerBadge(ctx, badgeLabel, y + 50, badgeColors);
-  y += 110;
-
   ctx.fillStyle = p.accent;
-  ctx.font = 'bold 72px Outfit';
+  ctx.font = 'bold 68px Outfit';
   ctx.fillText(headline, STORY_WIDTH / 2, y + 20);
-  y += 90;
+  y += 82;
 
   ctx.fillStyle = p.textPrimary;
-  ctx.font = 'bold 80px Outfit';
+  ctx.font = 'bold 76px Outfit';
   const username = `@${winner.username}`;
-  ctx.fillText(username.length > 16 ? `@${winner.username.slice(0, 14)}…` : username, STORY_WIDTH / 2, y + 30);
-  y += 100;
+  ctx.fillText(username.length > 16 ? `@${winner.username.slice(0, 14)}…` : username, STORY_WIDTH / 2, y + 24);
+  y += 92;
 
   const prizeName = prize?.name || (isAsil ? 'Ödül' : 'Yedek Ödül');
   const prizeBoxY = y + 20;
@@ -167,9 +150,7 @@ export async function generateWinnerStory({
     y
   );
 
-  ctx.fillStyle = p.textFaint;
-  ctx.font = '600 24px Outfit';
-  ctx.fillText('RaffleStudio', STORY_WIDTH / 2, 1780);
+  drawStoryAttribution(ctx, p);
 
   const slug = winner.username.replace(/[^a-z0-9._-]/gi, '_').slice(0, 20);
   downloadCanvasAsPng(canvas, `talihli_${slug}_story.png`);

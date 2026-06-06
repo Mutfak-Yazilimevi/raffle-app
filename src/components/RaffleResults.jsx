@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Trophy, Download, Share2, RefreshCw, XCircle, ExternalLink } from 'lucide-react';
 import { generateResultsStory } from '../utils/generateResultsStory';
 import { parseFollowAccountList, isFollowRuleActive } from '../utils/followRules';
+import { getWinnerVerificationChecklist } from '../utils/participationCriteria';
 
 export default function RaffleResults({
   winners: initialWinners,
@@ -10,9 +11,7 @@ export default function RaffleResults({
   prizes = [],
   showPrizeProductsInResultsStory = false,
   storyBackgroundId,
-  requiredFollowAccounts = '',
-  minRequiredFollows = 0,
-  followVerification = {},
+  rules = {},
   onReset,
   onBackToAnnouncement,
 }) {
@@ -28,8 +27,13 @@ export default function RaffleResults({
 
   const hasBrand = brand && (brand.name || brand.logo || brand.raffleName);
   const activePrizes = prizes?.length > 0 ? prizes : [];
+  const followVerification = rules.followVerification || {};
+  const requiredFollowAccounts = rules.requiredFollowAccounts || '';
+  const requireFollowAccounts = Boolean(rules.requireFollowAccounts);
+  const verificationChecklist = getWinnerVerificationChecklist(rules);
+
   const followAccounts = parseFollowAccountList(requiredFollowAccounts);
-  const followRuleActive = isFollowRuleActive(requiredFollowAccounts, minRequiredFollows);
+  const followRuleActive = isFollowRuleActive(requiredFollowAccounts, requireFollowAccounts);
 
   const getFollowVerificationForUser = (username) => followVerification[username.toLowerCase()] || null;
 
@@ -215,11 +219,22 @@ export default function RaffleResults({
           </p>
         )}
 
-        {isWinner && (
+        {isWinner && (verificationChecklist.length > 0 || followRuleActive) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderTop: '1px solid var(--glass-border)', paddingTop: '10px', fontSize: '12px' }}>
-            {followRuleActive ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Takip şartı (eklenti doğrulaması)</span>
+            <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Katılım kriterleri doğrulaması</span>
+            {verificationChecklist.map((item) => (
+              <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={verificationState[person.username]?.[item.id] || false}
+                  onChange={() => handleVerifyChange(person.username, item.id)}
+                  style={{ cursor: 'pointer', accentColor: 'var(--insta-pink)' }}
+                />
+                <span>{item.label}</span>
+              </label>
+            ))}
+            {followRuleActive && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: verificationChecklist.length ? '4px' : 0 }}>
                 {followAccounts.map((account) => {
                   const verification = getFollowVerificationForUser(person.username);
                   const followed = verification?.followed?.includes(account);
@@ -232,31 +247,12 @@ export default function RaffleResults({
                         onChange={() => handleVerifyChange(person.username, `follow_${account}`)}
                         style={{ cursor: 'pointer', accentColor: 'var(--insta-pink)' }}
                       />
-                      <span>@{account} {unknown ? '(doğrulanmadı)' : followed ? '✓' : '✗'}</span>
+                      <span>@{account} takip {unknown ? '(doğrulanmadı)' : followed ? '✓' : '✗'}</span>
                     </label>
                   );
                 })}
               </div>
-            ) : (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={verificationState[person.username]?.follow || false}
-                  onChange={() => handleVerifyChange(person.username, 'follow')}
-                  style={{ cursor: 'pointer', accentColor: 'var(--insta-pink)' }}
-                />
-                <span>Hesabı Takip Ediyor</span>
-              </label>
             )}
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={verificationState[person.username]?.like || false}
-                onChange={() => handleVerifyChange(person.username, 'like')}
-                style={{ cursor: 'pointer', accentColor: 'var(--insta-pink)' }}
-              />
-              <span>Gönderiyi Beğendi</span>
-            </label>
           </div>
         )}
       </div>

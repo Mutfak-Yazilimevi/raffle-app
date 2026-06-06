@@ -11,21 +11,19 @@ export function parseFollowAccountList(input) {
   ));
 }
 
-export function isFollowRuleActive(requiredFollowAccounts, minRequiredFollows) {
-  const accounts = parseFollowAccountList(requiredFollowAccounts);
-  return accounts.length > 0 && minRequiredFollows > 0;
+export function isFollowRuleActive(requiredFollowAccounts, requireFollowAccounts = false) {
+  if (!requireFollowAccounts) return false;
+  return parseFollowAccountList(requiredFollowAccounts).length > 0;
 }
 
-export function getEffectiveMinRequiredFollows(accounts, minRequiredFollows) {
-  if (accounts.length === 0) return 0;
-  const min = Math.max(1, parseInt(minRequiredFollows, 10) || 1);
-  return Math.min(min, accounts.length);
+export function getEffectiveMinRequiredFollows(accounts) {
+  return accounts.length;
 }
 
 export function evaluateFollowRequirement(followedAccounts, requiredAccounts, minRequiredFollows) {
   const required = requiredAccounts.map((a) => a.toLowerCase());
   const followed = (followedAccounts || []).map((a) => a.toLowerCase());
-  const min = getEffectiveMinRequiredFollows(required, minRequiredFollows);
+  const min = minRequiredFollows ?? getEffectiveMinRequiredFollows(required);
   const matched = required.filter((acc) => followed.includes(acc));
   const missing = required.filter((acc) => !followed.includes(acc));
   return {
@@ -36,25 +34,26 @@ export function evaluateFollowRequirement(followedAccounts, requiredAccounts, mi
   };
 }
 
-export function getFollowRuleSummary(requiredFollowAccounts, minRequiredFollows) {
+export function getFollowRuleSummary(requiredFollowAccounts, requireFollowAccounts = false) {
+  if (!requireFollowAccounts) return null;
   const accounts = parseFollowAccountList(requiredFollowAccounts);
-  if (accounts.length === 0 || minRequiredFollows <= 0) return null;
-  const min = getEffectiveMinRequiredFollows(accounts, minRequiredFollows);
+  if (accounts.length === 0) return null;
   const handles = accounts.map((a) => `@${a}`).join(', ');
-  if (min >= accounts.length) {
-    return `Takip şartı: ${handles} hesaplarının tümünü takip etmek zorunlu`;
+  if (accounts.length === 1) {
+    return `Takip şartı: ${handles} hesabını takip etmek zorunlu`;
   }
-  return `Takip şartı: ${handles} listesinden en az ${min} hesabı takip etmek zorunlu`;
+  return `Takip şartı: ${handles} hesaplarını takip etmek zorunlu`;
 }
 
-export function buildFollowVerifyRequest(participants, requiredFollowAccounts, minRequiredFollows) {
+export function buildFollowVerifyRequest(participants, requiredFollowAccounts, requireFollowAccounts = false) {
   const accounts = parseFollowAccountList(requiredFollowAccounts);
   return {
     requestId: Date.now(),
     status: 'pending',
     participants: Array.from(new Set(participants.map((p) => p.replace(/^@+/, '').toLowerCase()))),
     requiredFollowAccounts: accounts,
-    minRequiredFollows: getEffectiveMinRequiredFollows(accounts, minRequiredFollows),
+    minRequiredFollows: getEffectiveMinRequiredFollows(accounts),
+    requireFollowAccounts: Boolean(requireFollowAccounts),
     createdAt: new Date().toISOString(),
   };
 }

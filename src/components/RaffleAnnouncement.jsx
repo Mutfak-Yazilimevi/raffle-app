@@ -1,204 +1,207 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Award, ExternalLink, Settings, Play, Zap, Trophy, Megaphone, CheckCircle2,
+  Award, Megaphone, Plus, Trophy, Clock, CheckCircle2, ChevronRight, Loader2,
 } from 'lucide-react';
-import { resolveInstagramUrl } from '../config';
-import { getRulesSummaryLines } from '../utils/raffleConfigFile';
+import { loadRaffleDisplayBundle } from '../utils/setupStorage';
+import RaffleAnnouncementDetail from './RaffleAnnouncementDetail';
+import HowItWorksSection from './HowItWorksSection';
+
+function formatRaffleDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('tr-TR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function getEntryPhase(entry) {
+  if (entry.drawResults?.winners?.length > 0) return 'completed';
+  const summary = entry.summary || {};
+  if (summary.raffleName || summary.brandName || summary.prizeCount > 0) return 'configured';
+  return 'empty';
+}
+
+function getEntryTitle(entry) {
+  return entry.summary?.raffleName?.trim()
+    || entry.summary?.brandName?.trim()
+    || 'İsimsiz çekiliş';
+}
 
 export default function RaffleAnnouncement({
-  form,
-  phase,
-  drawResults,
+  raffleEntries,
+  onCreateRaffle,
   onDefineConfig,
   onStartScheduled,
-  onQuickStart,
 }) {
-  const {
-    brand, prizes, entryMethod, minMentions, mentionMode, weightedEntry,
-    uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
-    requiredFollowAccounts, minRequiredFollows,
-  } = form;
+  const [activeTab, setActiveTab] = useState('ongoing');
+  const [selectedId, setSelectedId] = useState(null);
+  const [detailBundle, setDetailBundle] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  const rules = {
-    entryMethod, minMentions, mentionMode, weightedEntry,
-    uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
-    requiredFollowAccounts, minRequiredFollows,
-  };
-  const ruleLines = getRulesSummaryLines(rules);
-  const instagramUrl = resolveInstagramUrl(brand.postUrl);
-  const title = brand.raffleName || 'Çekiliş Duyurusu';
-  const hasContent = phase !== 'empty';
-  const winners = drawResults?.winners || [];
+  const visibleEntries = useMemo(
+    () => raffleEntries.filter((entry) => getEntryPhase(entry) !== 'empty'),
+    [raffleEntries]
+  );
 
-  const prizeGroups = (() => {
-    if (prizes.length === 0) return [];
-    return prizes.map((prize, idx) => ({
-      prize,
-      label: prize.name || `${idx + 1}. Ödül`,
-      winners: winners.filter((w) => w.prizeId === prize.id),
-    }));
-  })();
+  const ongoingEntries = useMemo(
+    () => visibleEntries.filter((entry) => getEntryPhase(entry) !== 'completed'),
+    [visibleEntries]
+  );
 
-  return (
-    <div style={{ width: '100%', maxWidth: '720px', margin: '0 auto', padding: '20px 20px 40px' }}>
-      {/* Hero */}
-      <div className="glass-container" style={{ padding: '32px 28px', textAlign: 'center', marginBottom: '24px', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', inset: 0, background: 'var(--insta-gradient)', opacity: 0.06, pointerEvents: 'none' }} />
-        {brand.logo && (
-          <img
-            src={brand.logo}
-            alt=""
-            style={{ height: '72px', maxWidth: '200px', objectFit: 'contain', marginBottom: '16px', borderRadius: '12px' }}
+  const completedEntries = useMemo(
+    () => visibleEntries.filter((entry) => getEntryPhase(entry) === 'completed'),
+    [visibleEntries]
+  );
+
+  const tabEntries = activeTab === 'completed' ? completedEntries : ongoingEntries;
+
+  useEffect(() => {
+    if (!selectedId) {
+      setDetailBundle(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setDetailLoading(true);
+    loadRaffleDisplayBundle(selectedId)
+      .then((bundle) => {
+        if (!cancelled) setDetailBundle(bundle);
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedId]);
+
+  if (selectedId) {
+    return (
+      <div className="announcement-page">
+        {detailLoading ? (
+          <div className="announcement-loading">
+            <Loader2 size={28} className="spin-icon" />
+            <span>İlan yükleniyor…</span>
+          </div>
+        ) : (
+          <RaffleAnnouncementDetail
+            bundle={detailBundle}
+            raffleId={selectedId}
+            onBack={() => setSelectedId(null)}
+            onDefineConfig={(id) => {
+              setSelectedId(null);
+              onDefineConfig(id);
+            }}
+            onStartScheduled={(id) => {
+              setSelectedId(null);
+              onStartScheduled(id);
+            }}
           />
         )}
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--insta-pink)', marginBottom: '12px', fontWeight: 700 }}>
-          <Megaphone size={14} /> Çekiliş İlanı
-        </div>
-        <h1 style={{ fontFamily: 'var(--font-title)', fontSize: 'clamp(24px, 5vw, 32px)', fontWeight: 800, margin: '0 0 8px', lineHeight: 1.2 }}>
-          {hasContent ? title : 'Henüz çekiliş tanımlanmadı'}
-        </h1>
-        {brand.name && (
-          <p style={{ margin: 0, fontSize: '15px', color: 'var(--text-muted)' }}>{brand.name}</p>
-        )}
-        {phase === 'completed' && (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '16px', padding: '8px 16px', borderRadius: '50px', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#10b981', fontSize: '13px', fontWeight: 600 }}>
-            <CheckCircle2 size={16} /> Çekiliş tamamlandı
-          </div>
-        )}
+        <HowItWorksSection />
       </div>
+    );
+  }
 
-      {!hasContent && (
-        <div className="glass-container" style={{ padding: '24px', textAlign: 'center', marginBottom: '24px' }}>
-          <p style={{ margin: '0 0 8px', color: 'var(--text-muted)', fontSize: '14px', lineHeight: 1.7 }}>
-            Organizatör olarak çekilişi tanımlayın veya hemen çekiliş yapın. Katılımcılar bu sayfada ödülleri ve kuralları görecek.
+  return (
+    <div className="announcement-page">
+      <div className="glass-container announcement-list-header">
+        <div>
+          <div className="announcement-list-kicker">
+            <Megaphone size={14} /> Çekiliş İlanları
+          </div>
+          <h1 className="announcement-list-title">Aktif ve tamamlanan çekilişler</h1>
+          <p className="announcement-list-subtitle">
+            Bir ilana tıklayarak ödülleri, kuralları ve sonuçları görüntüleyin.
           </p>
         </div>
-      )}
+        <button type="button" className="btn btn-primary" onClick={onCreateRaffle}>
+          <Plus size={16} /> Yeni Çekiliş
+        </button>
+      </div>
 
-      {/* Prizes */}
-      {hasContent && prizes.some((p) => p.name || p.image) && (
-        <div style={{ marginBottom: '24px' }}>
-          <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '16px', fontWeight: 700, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Award className="gradient-text" size={20} /> Ödüller
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {prizes.map((prize, idx) => (
-              <div
-                key={prize.id}
-                className="glass-container"
-                style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px' }}
-              >
-                {prize.image ? (
-                  <img src={prize.image} alt="" style={{ width: '64px', height: '64px', objectFit: 'contain', borderRadius: '10px', background: 'var(--bg-inset)', flexShrink: 0 }} />
-                ) : (
-                  <div style={{ width: '64px', height: '64px', borderRadius: '10px', background: 'rgba(225,48,108,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Award size={28} color="var(--insta-pink)" />
-                  </div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: '16px', marginBottom: '4px' }}>
-                    {prize.name || `${idx + 1}. Ödül`}
-                  </strong>
-                  <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                    {prize.winnerCount} asil · {prize.substituteCount} yedek kazanan
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Rules */}
-      {hasContent && ruleLines.length > 0 && (
-        <div className="glass-container" style={{ padding: '24px', marginBottom: '24px' }}>
-          <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '16px', fontWeight: 700, marginBottom: '14px' }}>Katılım Kuralları</h2>
-          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', lineHeight: 1.9, color: 'var(--text-main)' }}>
-            {ruleLines.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Instagram CTA */}
-      {hasContent && phase !== 'completed' && (
-        <a
-          href={instagramUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn btn-primary pulse-glow"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '10px',
-            width: '100%',
-            padding: '16px 24px',
-            fontSize: '16px',
-            fontWeight: 700,
-            textDecoration: 'none',
-            marginBottom: '24px',
-          }}
+      <div className="announcement-tabs" role="tablist" aria-label="Çekiliş durumu">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'ongoing'}
+          className={`announcement-tab${activeTab === 'ongoing' ? ' active' : ''}`}
+          onClick={() => setActiveTab('ongoing')}
         >
-          <ExternalLink size={20} /> Instagram&apos;da Katıl
-        </a>
-      )}
+          <Clock size={15} />
+          Devam Edenler
+          <span className="announcement-tab-count">{ongoingEntries.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'completed'}
+          className={`announcement-tab${activeTab === 'completed' ? ' active' : ''}`}
+          onClick={() => setActiveTab('completed')}
+        >
+          <CheckCircle2 size={15} />
+          Tamamlananlar
+          <span className="announcement-tab-count">{completedEntries.length}</span>
+        </button>
+      </div>
 
-      {/* Public results summary */}
-      {phase === 'completed' && winners.length > 0 && (
-        <div className="glass-container" style={{ padding: '24px', marginBottom: '24px' }}>
-          <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '16px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Trophy size={20} color="var(--insta-yellow)" /> Kazananlar
+      {tabEntries.length === 0 ? (
+        <div className="glass-container announcement-empty">
+          <Award size={36} color="var(--insta-pink)" style={{ opacity: 0.7 }} />
+          <h2>
+            {activeTab === 'completed' ? 'Henüz tamamlanan çekiliş yok' : 'Devam eden çekiliş yok'}
           </h2>
-          {prizeGroups.map((group) => (
-            <div key={group.prize.id} style={{ marginBottom: group === prizeGroups[prizeGroups.length - 1] ? 0 : '20px' }}>
-              {prizes.length > 1 && (
-                <h3 style={{ fontSize: '14px', color: 'var(--insta-yellow)', margin: '0 0 10px', fontWeight: 700 }}>{group.label}</h3>
-              )}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {group.winners
-                  .sort((a, b) => a.stepIndex - b.stepIndex)
-                  .map((w) => (
-                    <span
-                      key={`${w.username}-${w.stepIndex}`}
-                      style={{
-                        padding: '8px 14px',
-                        borderRadius: '50px',
-                        background: 'rgba(225, 48, 108, 0.12)',
-                        border: '1px solid rgba(225, 48, 108, 0.25)',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                      }}
-                    >
-                      @{w.username}
-                    </span>
-                  ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Organizer actions */}
-      <div className="glass-container" style={{ padding: '20px 24px', background: 'var(--bg-muted)', borderStyle: 'dashed' }}>
-        <p style={{ margin: '0 0 14px', fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
-          Organizatör
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <button type="button" className="btn btn-secondary" onClick={onDefineConfig} style={{ justifyContent: 'center' }}>
-            <Settings size={16} /> {phase === 'empty' ? 'Çekilişi Tanımla' : 'Çekilişi Düzenle'}
-          </button>
-          {phase === 'configured' && (
-            <button type="button" className="btn btn-primary pulse-glow" onClick={onStartScheduled} style={{ justifyContent: 'center' }}>
-              <Play size={16} fill="white" /> Bu Çekilişi Başlat
+          <p>
+            {activeTab === 'completed'
+              ? 'Tamamlanan çekilişler burada listelenir.'
+              : 'Yeni bir çekiliş tanımlayın; ilan burada görünecek.'}
+          </p>
+          {activeTab === 'ongoing' && (
+            <button type="button" className="btn btn-secondary" onClick={onCreateRaffle}>
+              <Plus size={16} /> İlk Çekilişi Tanımla
             </button>
           )}
-          <button type="button" className="btn btn-secondary" onClick={onQuickStart} style={{ justifyContent: 'center', borderColor: 'rgba(251, 173, 80, 0.3)' }}>
-            <Zap size={16} color="var(--insta-yellow)" /> Hemen Çekiliş Yap
-          </button>
         </div>
-      </div>
+      ) : (
+        <div className="announcement-list">
+          {tabEntries.map((entry) => {
+            const phase = getEntryPhase(entry);
+            const winnerCount = entry.drawResults?.winners?.length || 0;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                className="announcement-card glass-container"
+                onClick={() => setSelectedId(entry.id)}
+              >
+                <div className="announcement-card-icon">
+                  {phase === 'completed' ? (
+                    <Trophy size={22} color="var(--insta-yellow)" />
+                  ) : (
+                    <Megaphone size={22} color="var(--insta-pink)" />
+                  )}
+                </div>
+                <div className="announcement-card-body">
+                  <strong>{getEntryTitle(entry)}</strong>
+                  {entry.summary?.brandName && entry.summary?.raffleName && (
+                    <span className="announcement-card-meta">{entry.summary.brandName}</span>
+                  )}
+                  <span className="announcement-card-meta">
+                    {entry.summary?.prizeCount > 0
+                      ? `${entry.summary.prizeCount} ödül`
+                      : 'Ödül tanımlanmadı'}
+                    {phase === 'completed' && winnerCount > 0 ? ` · ${winnerCount} kazanan` : ''}
+                    {entry.updatedAt ? ` · ${formatRaffleDate(entry.updatedAt)}` : ''}
+                  </span>
+                </div>
+                <ChevronRight size={18} className="announcement-card-chevron" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <HowItWorksSection />
     </div>
   );
 }

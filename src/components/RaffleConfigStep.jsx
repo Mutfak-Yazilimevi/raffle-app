@@ -4,16 +4,16 @@ import {
   FileText, Download, FolderOpen, Share2, ArrowRight, Megaphone,
 } from 'lucide-react';
 import StoryBackgroundPicker from './StoryBackgroundPicker';
+import ParticipationCriteriaSection from './ParticipationCriteriaSection';
+import { CriteriaCheckbox, FormFieldHelp, RuleFiltersSection } from './rules';
+import { CRITERIA_COPY } from '../constants/ruleHelpCopy';
 
 export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement }) {
   const {
     brand, setBrand, prizes, addPrize, removePrize, updatePrize,
-    entryMethod, setEntryMethod, minMentions, setMinMentions,
-    mentionMode, setMentionMode, weightedEntry, setWeightedEntry,
-    uniqueMentions, setUniqueMentions, keywordRequired, setKeywordRequired,
+    entryMethod, setEntryMethod, weightedEntry,
+    keywordRequired, setKeywordRequired,
     keywordBlacklist, setKeywordBlacklist, userBlacklist, setUserBlacklist,
-    requiredFollowAccounts, setRequiredFollowAccounts,
-    minRequiredFollows, setMinRequiredFollows, followAccountList,
     showPrizeProductsInResultsStory, setShowPrizeProductsInResultsStory,
     storyBackgroundId, setStoryBackgroundId,
     handleImageUpload, storageWarning, configMessage,
@@ -67,7 +67,7 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement })
                   Logo Yükle
                 </>
               )}
-              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleImageUpload(e, (res) => setBrand({ ...brand, logo: res }))} />
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleImageUpload(e, (res) => setBrand({ ...brand, logo: res }), 'logo')} />
             </label>
             {brand.logo && (
               <button type="button" className="btn btn-secondary" style={{ marginTop: '8px', padding: '4px 10px', fontSize: '11px', width: '100%' }} onClick={() => setBrand({ ...brand, logo: '' })}>
@@ -107,7 +107,7 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement })
                         <ImageIcon size={14} color="var(--insta-blue)" /> Resim Seç
                       </>
                     )}
-                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleImageUpload(e, (res) => updatePrize(prize.id, 'image', res))} />
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleImageUpload(e, (res) => updatePrize(prize.id, 'image', res), 'prize')} />
                   </label>
                   {prize.image && (
                     <button type="button" className="btn btn-secondary" style={{ marginTop: '6px', padding: '3px 8px', fontSize: '10px', width: '100%' }} onClick={() => updatePrize(prize.id, 'image', '')}>
@@ -119,10 +119,16 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement })
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: '12px' }}>Asil Kazanan Sayısı</label>
+                  <FormFieldHelp whenActive={`Bu ödül için çekilişte ${prize.winnerCount} asil kazanan seçilir; her biri farklı kişi olmalıdır.`}>
+                    Asil kazananlar ödülü doğrudan alır.
+                  </FormFieldHelp>
                   <input type="number" min="1" className="form-input" style={{ padding: '8px 12px' }} value={prize.winnerCount} onChange={(e) => updatePrize(prize.id, 'winnerCount', Math.max(1, parseInt(e.target.value, 10) || 1))} />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: '12px' }}>Yedek Kazanan Sayısı</label>
+                  <FormFieldHelp whenActive={prize.substituteCount > 0 ? `${prize.substituteCount} yedek sırayla tutulur; asil kazanan ulaşılamazsa veya şartları sağlamazsa devreye girer.` : undefined}>
+                    Asil kazananlar ulaşılamazsa veya şartları sağlamazsa yedekler devreye girer. 0 = yedek yok.
+                  </FormFieldHelp>
                   <input type="number" min="0" className="form-input" style={{ padding: '8px 12px' }} value={prize.substituteCount} onChange={(e) => updatePrize(prize.id, 'substituteCount', Math.max(0, parseInt(e.target.value, 10) || 0))} />
                 </div>
               </div>
@@ -136,109 +142,20 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement })
           <ListFilter className="gradient-text" size={20} /> Kurallar ve Filtreler
         </h3>
 
-        <div className="form-group">
-          <label className="form-label">Katılım Hak Tipi</label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <button type="button" className={`btn ${entryMethod === 'one_per_user' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '13px', padding: '10px' }} onClick={() => { setEntryMethod('one_per_user'); setWeightedEntry(false); }}>
-              Her Kullanıcıya Tek Hak
-            </button>
-            <button type="button" className={`btn ${entryMethod === 'one_per_comment' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '13px', padding: '10px' }} disabled={weightedEntry} onClick={() => setEntryMethod('one_per_comment')}>
-              Her Yorum Bir Hak
-            </button>
-          </div>
-        </div>
+        <RuleFiltersSection
+          entryMethod={entryMethod}
+          setEntryMethod={setEntryMethod}
+          weightedEntry={weightedEntry}
+          setWeightedEntry={setWeightedEntry}
+          keywordRequired={keywordRequired}
+          setKeywordRequired={setKeywordRequired}
+          keywordBlacklist={keywordBlacklist}
+          setKeywordBlacklist={setKeywordBlacklist}
+          userBlacklist={userBlacklist}
+          setUserBlacklist={setUserBlacklist}
+        />
 
-        <div style={{ borderTop: '1px solid var(--glass-border)', margin: '16px 0', paddingTop: '16px' }} />
-
-        <h4 style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Arkadaş Etiketleme Filtreleri</h4>
-
-        <div className="form-group">
-          <label className="form-label">En Az Etiket Şartı (Kişi Sayısı)</label>
-          <input type="number" min="0" className="form-input" value={minMentions} onChange={(e) => setMinMentions(Math.max(0, parseInt(e.target.value, 10) || 0))} />
-        </div>
-
-        {minMentions > 0 && (
-          <>
-            <div className="form-group">
-              <label className="form-label">Etiket Kontrol Yöntemi</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <button type="button" className={`btn ${mentionMode === 'per_comment' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '12px', padding: '8px' }} onClick={() => { setMentionMode('per_comment'); setWeightedEntry(false); }}>
-                  Yorum Başına
-                </button>
-                <button type="button" className={`btn ${mentionMode === 'cumulative' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '12px', padding: '8px' }} onClick={() => setMentionMode('cumulative')}>
-                  Toplam Kümülatif
-                </button>
-              </div>
-            </div>
-
-            {mentionMode === 'cumulative' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', background: 'rgba(255, 255, 255, 0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
-                <input type="checkbox" id="weightedEntry" checked={weightedEntry} onChange={(e) => { setWeightedEntry(e.target.checked); if (e.target.checked) setEntryMethod('one_per_user'); }} style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--insta-pink)' }} />
-                <label htmlFor="weightedEntry" style={{ fontSize: '13px', cursor: 'pointer', fontWeight: 500 }}>
-                  Etiket Katsayısına Göre Ağırlıklı Hak (Bonus Şans)
-                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 400 }}>
-                    Kullanıcının etiket sayısı {minMentions}&apos;e bölünür. Çıkan tam sayı kadar bilet alır.
-                  </span>
-                </label>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <input type="checkbox" id="uniqueMentions" checked={uniqueMentions} onChange={(e) => setUniqueMentions(e.target.checked)} style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--insta-pink)' }} />
-              <label htmlFor="uniqueMentions" style={{ fontSize: '13px', cursor: 'pointer', fontWeight: 500 }}>
-                Aynı Kişileri Etiketlemeyi Engelle (Benzersiz Etiketler)
-              </label>
-            </div>
-          </>
-        )}
-
-        <div style={{ borderTop: '1px solid var(--glass-border)', margin: '16px 0' }} />
-
-        <h4 style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Kelime ve Kullanıcı Filtreleri</h4>
-
-        <div className="form-group">
-          <label className="form-label">Zorunlu Kelime veya Hashtag (İsteğe Bağlı)</label>
-          <input type="text" className="form-input" placeholder="Örn: #cekilis, katılıyorum" value={keywordRequired} onChange={(e) => setKeywordRequired(e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Yasaklı Kelimeler (Virgülle Ayırın)</label>
-          <input type="text" className="form-input" placeholder="Örn: bot, spam, sahte" value={keywordBlacklist} onChange={(e) => setKeywordBlacklist(e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Engellenen Katılımcılar (Virgülle Ayırın)</label>
-          <input type="text" className="form-input" placeholder="Örn: @kendi_hesabiniz, @spam_user" value={userBlacklist} onChange={(e) => setUserBlacklist(e.target.value)} />
-        </div>
-
-        <div style={{ borderTop: '1px solid var(--glass-border)', margin: '16px 0', paddingTop: '16px' }} />
-
-        <h4 style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Takip Şartları</h4>
-        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: 1.6 }}>
-          Katılımcıların takip etmesi gereken hesapları tanımlayın. Chrome eklentisi profilleri gezerek bu şartı doğrular.
-        </p>
-        <div className="form-group">
-          <label className="form-label">Takip Edilmesi Gereken Hesaplar</label>
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Örn: @marka_hesabi, @partner1, @partner2"
-            value={requiredFollowAccounts}
-            onChange={(e) => setRequiredFollowAccounts(e.target.value)}
-          />
-        </div>
-        <div className="form-group">
-          <label className="form-label">En Az Kaç Hesap Takip Edilmeli?</label>
-          <input
-            type="number"
-            min="1"
-            className="form-input"
-            value={minRequiredFollows}
-            onChange={(e) => setMinRequiredFollows(Math.max(1, parseInt(e.target.value, 10) || 1))}
-            disabled={!requiredFollowAccounts.trim()}
-          />
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-            Listede {followAccountList.length || 0} hesap var. Tümünü zorunlu kılmak için sayıyı listeye eşitleyin.
-          </span>
-        </div>
+        <ParticipationCriteriaSection form={form} />
       </div>
 
       <div className="glass-container step-card" style={{ padding: '24px' }}>
@@ -249,21 +166,16 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement })
           Çekiliş öncesi tanımlarınızı kaydedin veya ön duyuru story görseli oluşturun. Çekiliş günü TXT dosyasını yüklemeniz yeterli.
         </p>
         <StoryBackgroundPicker value={storyBackgroundId} onChange={setStoryBackgroundId} />
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '16px', background: 'var(--bg-muted)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--glass-border)' }}>
-          <input
-            type="checkbox"
-            id="showPrizeProductsInResultsStory"
-            checked={showPrizeProductsInResultsStory}
-            onChange={(e) => setShowPrizeProductsInResultsStory(e.target.checked)}
-            style={{ cursor: 'pointer', width: '16px', height: '16px', marginTop: '2px', accentColor: 'var(--insta-pink)' }}
-          />
-          <label htmlFor="showPrizeProductsInResultsStory" style={{ fontSize: '13px', cursor: 'pointer', lineHeight: 1.6 }}>
-            <strong>Sonuç story&apos;sinde kazanılan ürünleri göster</strong>
-            <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', fontWeight: 400, marginTop: '4px' }}>
-              Açıkken çekiliş sonuç story görselinde her kazananın yanında ödül adı ve ürün görseli yer alır.
-            </span>
-          </label>
-        </div>
+        <CriteriaCheckbox
+          id="showPrizeProductsInResultsStory"
+          checked={showPrizeProductsInResultsStory}
+          onChange={setShowPrizeProductsInResultsStory}
+          label={CRITERIA_COPY.showPrizeProductsInResultsStory.label}
+          description={CRITERIA_COPY.showPrizeProductsInResultsStory.description}
+          whenEnabled={CRITERIA_COPY.showPrizeProductsInResultsStory.whenEnabled}
+          highlighted
+          className="rule-checkbox-block--spaced"
+        />
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button type="button" className="btn btn-secondary" onClick={handleExportConfigTxt}>
             <Download size={16} /> Ayarları TXT İndir

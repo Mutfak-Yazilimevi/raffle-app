@@ -3,7 +3,8 @@ import {
   drawRoundRect,
   initStoryCanvas,
   downloadCanvasAsPng,
-  wrapText,
+  drawStoryAttribution,
+  drawStoryBrandHeader,
   STORY_WIDTH,
 } from './storyCanvas';
 import { getRulesSummaryLines } from './raffleConfigFile';
@@ -20,51 +21,34 @@ export async function generateSetupStory(state) {
     keywordBlacklist: ruleFields.keywordBlacklist,
     userBlacklist: ruleFields.userBlacklist,
     requiredFollowAccounts: ruleFields.requiredFollowAccounts,
-    minRequiredFollows: ruleFields.minRequiredFollows,
+    requireFollowAccounts: ruleFields.requireFollowAccounts,
+    requireLike: ruleFields.requireLike,
+    requireSave: ruleFields.requireSave,
+    requireFollowAccounts: ruleFields.requireFollowAccounts,
+    requireMentionRule: ruleFields.requireMentionRule,
+    maxMentions: ruleFields.maxMentions,
+    maxCommentsPerUser: ruleFields.maxCommentsPerUser,
+    allowMultipleCommentsBonus: ruleFields.allowMultipleCommentsBonus,
+    requireStoryShare: ruleFields.requireStoryShare,
+    requireStoryProofIfPrivate: ruleFields.requireStoryProofIfPrivate,
+    requireMinAge: ruleFields.requireMinAge,
+    minAge: ruleFields.minAge,
+    requireRealActiveAccount: ruleFields.requireRealActiveAccount,
+    disallowBusinessAccounts: ruleFields.disallowBusinessAccounts,
   };
 
   const { canvas, ctx, p } = initStoryCanvas(storyBackgroundId, 100, 1720);
 
-  let y = 180;
-
-  if (brand?.logo) {
-    try {
-      const logoImg = await loadImage(brand.logo);
-      const logoSize = 110;
-      const aspect = logoImg.width / logoImg.height;
-      let drawW = logoSize;
-      let drawH = logoSize;
-      if (aspect > 1) drawH = logoSize / aspect;
-      else drawW = logoSize * aspect;
-      ctx.drawImage(logoImg, STORY_WIDTH / 2 - drawW / 2, y, drawW, drawH);
-      y += drawH + 24;
-    } catch {
-      // logo yüklenemezse devam et
-    }
-  }
+  let y = await drawStoryBrandHeader(ctx, brand, p, 140, {
+    raffleFallback: 'ÇEKİLİŞ DUYURUSU',
+    raffleFont: 'bold 48px Outfit',
+  });
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = p.textPrimary;
-  ctx.font = 'bold 68px Outfit';
-
-  const title = brand?.raffleName || 'ÇEKİLİŞ DUYURUSU';
-  const titleLines = wrapText(ctx, title.toUpperCase(), 820);
-  for (const line of titleLines.slice(0, 2)) {
-    ctx.fillText(line, STORY_WIDTH / 2, y);
-    y += 72;
-  }
-
-  if (brand?.name) {
-    ctx.font = '600 34px Inter';
-    ctx.fillStyle = p.textSecondary;
-    ctx.fillText(brand.name, STORY_WIDTH / 2, y + 10);
-    y += 50;
-  }
-
   ctx.font = '500 28px Inter';
   ctx.fillStyle = p.textMuted;
-  ctx.fillText('Katılım şartları ve ödüller aşağıdadır', STORY_WIDTH / 2, y + 20);
-  y += 60;
+  ctx.fillText('Katılım şartları ve ödüller aşağıdadır', STORY_WIDTH / 2, y + 8);
+  y += 48;
 
   ctx.strokeStyle = p.divider;
   ctx.beginPath();
@@ -157,10 +141,7 @@ export async function generateSetupStory(state) {
     y += 62;
   }
 
-  ctx.textAlign = 'center';
-  ctx.fillStyle = p.textFaint;
-  ctx.font = '600 24px Outfit';
-  ctx.fillText('instagram-cekilis-uygulamasi.github.io', STORY_WIDTH / 2, 1780);
+  drawStoryAttribution(ctx, p);
 
   downloadCanvasAsPng(canvas, 'cekilis_duyuru_story.png');
 }

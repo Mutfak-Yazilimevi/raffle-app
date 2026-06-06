@@ -1,6 +1,8 @@
 import { getFollowRuleSummary } from './followRules';
+import { getParticipationCriteriaSummaryLines, parseParticipationCriteria } from './participationCriteria';
+import { APP_DISPLAY_NAME } from './appBranding';
 
-const FILE_HEADER = '# RaffleStudio Çekiliş Ayar Dosyası v1';
+const FILE_HEADER = `# ${APP_DISPLAY_NAME} Çekiliş Ayar Dosyası v1`;
 const FILE_HINT = '# Çekiliş günü bu dosyayı yükleyerek marka, ödül ve kural tanımlarınızı geri getirin.';
 
 export function buildConfigSnapshot(state) {
@@ -32,7 +34,7 @@ export function buildConfigSnapshot(state) {
       showPrizeProductsInResultsStory: Boolean(state.showPrizeProductsInResultsStory),
       storyBackgroundId: state.storyBackgroundId || 'insta-gradient',
       requiredFollowAccounts: state.requiredFollowAccounts || '',
-      minRequiredFollows: Math.max(0, parseInt(state.minRequiredFollows, 10) || 0),
+      ...parseParticipationCriteria(state),
     },
   };
 }
@@ -80,7 +82,7 @@ export function parseConfigFromTxt(text) {
     showPrizeProductsInResultsStory: Boolean(parsed.rules?.showPrizeProductsInResultsStory),
     storyBackgroundId: parsed.rules?.storyBackgroundId || 'insta-gradient',
     requiredFollowAccounts: parsed.rules?.requiredFollowAccounts || '',
-    minRequiredFollows: Math.max(0, parseInt(parsed.rules?.minRequiredFollows, 10) || 0),
+    ...parseParticipationCriteria(parsed.rules || {}),
   };
 }
 
@@ -104,17 +106,19 @@ function entryMethodLabel(method) {
 export function getRulesSummaryLines(rules) {
   const lines = [`Katılım: ${entryMethodLabel(rules.entryMethod)}`];
 
-  if (rules.minMentions > 0) {
+  if (rules.requireMentionRule && rules.minMentions > 0) {
     lines.push(`En az ${rules.minMentions} etiket (${rules.mentionMode === 'cumulative' ? 'toplam' : 'yorum başı'})`);
   }
-  if (rules.weightedEntry) lines.push('Ağırlıklı hak aktif');
-  if (rules.uniqueMentions) lines.push('Benzersiz etiket zorunlu');
+  if (rules.requireMentionRule && rules.weightedEntry) lines.push('Ağırlıklı hak aktif');
+  if (rules.requireMentionRule && rules.uniqueMentions) lines.push('Benzersiz etiket zorunlu');
   if (rules.keywordRequired?.trim()) lines.push(`Zorunlu: ${rules.keywordRequired.trim()}`);
   if (rules.keywordBlacklist?.trim()) lines.push(`Yasaklı kelime filtresi var`);
   if (rules.userBlacklist?.trim()) lines.push(`Engelli kullanıcı listesi var`);
 
-  const followLine = getFollowRuleSummary(rules.requiredFollowAccounts, rules.minRequiredFollows);
+  const followLine = getFollowRuleSummary(rules.requiredFollowAccounts, rules.requireFollowAccounts);
   if (followLine) lines.push(followLine);
+
+  lines.push(...getParticipationCriteriaSummaryLines(rules));
 
   return lines;
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Users, Upload, Trash2, CheckCircle, Info, Play, Share2, ArrowLeft, Puzzle, ExternalLink, ListOrdered, UserCheck,
+  Trash2, CheckCircle, Info, Play, Share2, ArrowLeft, Puzzle, ExternalLink, ListOrdered, UserCheck,
 } from 'lucide-react';
 
 export default function RaffleCommentsStep({
@@ -11,8 +11,8 @@ export default function RaffleCommentsStep({
   onOpenExtension,
 }) {
   const {
-    rawText, comments, handleTextChange, handleCSVUpload, loadDemoData, clearData,
-    prizes, ticketsPool, uniqueParticipantsCount, participantStats, filteredOutCount,
+    comments, clearData,
+    ticketsPool, uniqueParticipantsCount, participantStats, filteredOutCount,
     configMessage, generatingStartingStory, handleGenerateStartingStory,
     followRuleActive, followAccountList, effectiveMinRequiredFollows,
     followVerifyMessage, followVerifyPending, handlePrepareFollowVerification,
@@ -46,8 +46,8 @@ export default function RaffleCommentsStep({
                 Yorumları Chrome eklentisi ile aktarın
               </h4>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Instagram yorumlarını otomatik çekmek için sağ üstteki Chrome Eklentisi sayfasından kurulum yapın,
-                ardından yorumları buraya aktarın. İsterseniz aşağıdan manuel yapıştırma veya CSV de kullanabilirsiniz.
+                Instagram yorumlarını otomatik çekmek için Chrome eklentisini kurun ve çekiliş gönderisinden
+                yorumları bu adıma aktarın. Katılımcı özeti aşağıda listelenir.
               </p>
             </div>
           </div>
@@ -85,57 +85,29 @@ export default function RaffleCommentsStep({
       )}
 
       <div className="step-cards-grid">
-        <div className="glass-container step-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Users className="gradient-text" /> Yorumları Yükle
-            </h3>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={loadDemoData}>Demo Yükle</button>
-              {comments.length > 0 && (
-                <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={clearData}>
-                  <Trash2 size={14} /> Temizle
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="form-group" style={{ flexGrow: 1 }}>
-            <textarea
-              className="form-textarea"
-              style={{ flexGrow: 1, minHeight: comments.length > 0 ? '160px' : '280px', fontSize: '13px', lineHeight: '1.6', width: '100%' }}
-              placeholder={comments.length > 0
-                ? 'Ek yorum yapıştırabilir veya dosya yükleyebilirsiniz. Katılımcı özeti sağda.'
-                : `Örnek Format 1 (Instagram kopyala-yapıştır):\nkullanici_adi\nHarika çekiliş! @arkadas1 @arkadas2\n\nÖrnek Format 2:\nkullanici_adi: Katılıyorum @arkadas`}
-              value={rawText}
-              onChange={handleTextChange}
-            />
-          </div>
-
-          <div style={{ border: '2px dashed var(--glass-border)', borderRadius: '12px', padding: '16px', textAlign: 'center', cursor: 'pointer', position: 'relative', background: 'var(--bg-inset)', marginTop: '16px' }}>
-            <input type="file" accept=".csv,.txt" onChange={handleCSVUpload} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} />
-            <Upload size={20} style={{ margin: '0 auto 8px', color: 'var(--insta-pink)' }} />
-            <p style={{ fontSize: '13px', margin: 0, fontWeight: 500 }}>CSV veya TXT Dosyası Sürükleyin veya Seçin</p>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Sütunlar: username, comment formatında olmalıdır</span>
-          </div>
-        </div>
-
-        <div className="glass-container step-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
+        <div className="glass-container step-card-full" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
             <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
               <ListOrdered className="gradient-text" size={20} /> Katılımcı Özeti
             </h3>
-            {comments.length > 0 && (
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                {comments.length} yorum · {participantStats.length} kişi
-                {filteredOutCount > 0 && ` · ${filteredOutCount} kişi kurallara takıldı`}
-              </span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {comments.length > 0 && (
+                <>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    {comments.length} yorum · {participantStats.length} kişi
+                    {filteredOutCount > 0 && ` · ${filteredOutCount} kişi kurallara takıldı`}
+                  </span>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={clearData}>
+                    <Trash2 size={14} /> Temizle
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {comments.length === 0 ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: '14px', lineHeight: 1.7, border: '1px dashed var(--glass-border)', borderRadius: '12px', background: 'var(--bg-muted)' }}>
-              Yorum yüklediğinizde katılımcılar, yorum sayıları ve çekiliş hakları burada listelenir.
+              Chrome eklentisi ile yorum aktardığınızda katılımcılar, yorum sayıları ve çekiliş hakları burada listelenir.
             </div>
           ) : (
             <>

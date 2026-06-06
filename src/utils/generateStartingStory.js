@@ -3,7 +3,8 @@ import {
   drawRoundRect,
   initStoryCanvas,
   downloadCanvasAsPng,
-  wrapText,
+  drawStoryAttribution,
+  drawStoryBrandHeader,
   STORY_WIDTH,
 } from './storyCanvas';
 
@@ -44,61 +45,20 @@ export async function generateStartingStory(state, stats = {}) {
 
   const { canvas, ctx, p } = initStoryCanvas(storyBackgroundId, 80, 1760);
 
-  ctx.strokeStyle = 'rgba(252, 204, 99, 0.35)';
-  ctx.lineWidth = 6;
-  ctx.beginPath();
-  ctx.arc(STORY_WIDTH / 2, 420, 280, 0, Math.PI * 2);
-  ctx.stroke();
+  let y = await drawStoryBrandHeader(ctx, brand, p, 120, {
+    raffleFallback: 'BÜYÜK ÇEKİLİŞ',
+    raffleFont: 'bold 46px Outfit',
+    bottomGap: 16,
+  });
 
-  ctx.strokeStyle = p.divider;
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.arc(STORY_WIDTH / 2, 420, 320, 0, Math.PI * 2);
-  ctx.stroke();
-
-  let y = 150;
-
-  if (brand?.logo) {
-    try {
-      const logoImg = await loadImage(brand.logo);
-      const logoSize = 100;
-      const aspect = logoImg.width / logoImg.height;
-      let drawW = logoSize;
-      let drawH = logoSize;
-      if (aspect > 1) drawH = logoSize / aspect;
-      else drawW = logoSize * aspect;
-      ctx.drawImage(logoImg, STORY_WIDTH / 2 - drawW / 2, y, drawW, drawH);
-      y += drawH + 30;
-    } catch {
-      // devam
-    }
-  }
-
-  drawBadge(ctx, 'ÇEKİLİŞ BAŞLIYOR!', y + 40);
-  y += 120;
+  drawBadge(ctx, 'ÇEKİLİŞ BAŞLIYOR!', y + 36);
+  y += 108;
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = p.textPrimary;
-  ctx.font = 'bold 56px Outfit';
-
-  const raffleTitle = brand?.raffleName || 'BÜYÜK ÇEKİLİŞ';
-  const titleLines = wrapText(ctx, raffleTitle.toUpperCase(), 860);
-  for (const line of titleLines.slice(0, 2)) {
-    ctx.fillText(line, STORY_WIDTH / 2, y);
-    y += 64;
-  }
-
-  if (brand?.name) {
-    ctx.font = '600 32px Inter';
-    ctx.fillStyle = p.textSecondary;
-    ctx.fillText(brand.name, STORY_WIDTH / 2, y + 12);
-    y += 48;
-  }
-
   ctx.font = '500 30px Inter';
   ctx.fillStyle = p.accent;
-  ctx.fillText('🎬 Canlı çekiliş şimdi başlıyor!', STORY_WIDTH / 2, y + 20);
-  y += 70;
+  ctx.fillText('🎬 Canlı çekiliş şimdi başlıyor!', STORY_WIDTH / 2, y + 8);
+  y += 56;
 
   ctx.strokeStyle = p.divider;
   ctx.beginPath();
@@ -204,9 +164,7 @@ export async function generateStartingStory(state, stats = {}) {
     ctx.fillText('Çekiliş gönderisi profilde / hikayede', STORY_WIDTH / 2, y);
   }
 
-  ctx.fillStyle = p.textFaint;
-  ctx.font = '600 24px Outfit';
-  ctx.fillText('instagram-cekilis-uygulamasi.github.io', STORY_WIDTH / 2, 1780);
+  drawStoryAttribution(ctx, p);
 
   downloadCanvasAsPng(canvas, 'cekilis_basliyor_story.png');
 }

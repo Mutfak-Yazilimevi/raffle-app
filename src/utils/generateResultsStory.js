@@ -4,6 +4,8 @@ import {
   initStoryCanvas,
   downloadCanvasAsPng,
   wrapText,
+  drawStoryAttribution,
+  drawStoryBrandHeader,
   STORY_WIDTH,
 } from './storyCanvas';
 
@@ -83,53 +85,24 @@ export async function generateResultsStory({
 }) {
   const { canvas, ctx, p } = initStoryCanvas(storyBackgroundId, 120, 1680);
 
-  let headerY = 200;
-
-  if (brand?.logo) {
-    try {
-      const logoImg = await loadImage(brand.logo);
-      const logoSize = 100;
-      const aspect = logoImg.width / logoImg.height;
-      let drawW = logoSize;
-      let drawH = logoSize;
-      if (aspect > 1) drawH = logoSize / aspect;
-      else drawW = logoSize * aspect;
-      ctx.drawImage(logoImg, STORY_WIDTH / 2 - drawW / 2, headerY, drawW, drawH);
-      headerY += drawH + 20;
-    } catch {
-      // devam
-    }
-  }
-
-  ctx.fillStyle = p.textPrimary;
-  ctx.textAlign = 'center';
-  ctx.font = 'bold 64px Outfit';
-
-  const title = brand?.raffleName || 'ÇEKİLİŞ SONUÇLARI';
-  const titleLines = wrapText(ctx, title.toUpperCase(), 820);
-  titleLines.slice(0, 2).forEach((line, i) => {
-    ctx.fillText(line, STORY_WIDTH / 2, headerY + 50 + i * 70);
+  let currentY = await drawStoryBrandHeader(ctx, brand, p, 150, {
+    raffleFallback: 'ÇEKİLİŞ SONUÇLARI',
+    raffleFont: 'bold 46px Outfit',
+    bottomGap: 16,
   });
-  headerY += Math.min(titleLines.length, 2) * 70 + 10;
 
-  if (brand?.name) {
-    ctx.font = '600 32px Inter';
-    ctx.fillStyle = p.textSecondary;
-    ctx.fillText(brand.name, STORY_WIDTH / 2, headerY + 20);
-    headerY += 40;
-  }
-
+  ctx.textAlign = 'center';
   ctx.font = '500 28px Inter';
   ctx.fillStyle = p.textMuted;
-  ctx.fillText('Katılan ve Kazanan Herkesi Tebrik Ederiz!', STORY_WIDTH / 2, headerY + 30);
+  ctx.fillText('Katılan ve Kazanan Herkesi Tebrik Ederiz!', STORY_WIDTH / 2, currentY + 8);
 
   ctx.strokeStyle = p.divider;
   ctx.beginPath();
-  ctx.moveTo(150, headerY + 60);
-  ctx.lineTo(930, headerY + 60);
+  ctx.moveTo(150, currentY + 44);
+  ctx.lineTo(930, currentY + 44);
   ctx.stroke();
 
-  let currentY = headerY + 110;
+  currentY += 72;
   const maxWinnersToShow = showPrizeProducts ? 5 : 6;
 
   ctx.fillStyle = p.textPrimary;
@@ -176,9 +149,7 @@ export async function generateResultsStory({
     ctx.fillText(`+ ${substitutes.length - maxSubstitutesToShow} yedek kazanan daha...`, STORY_WIDTH / 2, currentY);
   }
 
-  ctx.fillStyle = p.textFaint;
-  ctx.font = '600 24px Outfit';
-  ctx.fillText('RaffleStudio', STORY_WIDTH / 2, 1750);
+  drawStoryAttribution(ctx, p, 1755);
 
   downloadCanvasAsPng(canvas, 'cekilis_sonuclari_story.png');
 }

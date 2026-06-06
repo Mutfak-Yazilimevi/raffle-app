@@ -4,7 +4,6 @@ import { downloadConfigTxt, parseConfigFromTxt } from '../utils/raffleConfigFile
 import { generateSetupStory } from '../utils/generateSetupStory';
 import { generateStartingStory } from '../utils/generateStartingStory';
 import { DEFAULT_STORY_BACKGROUND_ID } from '../utils/storyBackgrounds';
-import { MOCK_COMMENTS_PRESET, parseRawText, parseCSV } from '../utils/commentParsing';
 import {
   parseFollowAccountList,
   isFollowRuleActive,
@@ -14,14 +13,16 @@ import {
   FOLLOW_VERIFY_REQUEST_KEY,
   FOLLOW_VERIFY_RESULTS_KEY,
 } from '../utils/followRules';
+import { parseParticipationCriteria, PARTICIPATION_CRITERIA_DEFAULTS } from '../utils/participationCriteria';
+import { resizeImageFromFile, recompressIfNeeded, resizeUploadedImage } from '../utils/resizeUploadedImage';
 
-export function useRaffleForm({ importedComments, onClearImported }) {
-  const [rawText, setRawText] = useState('');
+const EMPTY_BRAND = { name: '', logo: '', raffleName: '', postUrl: '' };
+const EMPTY_PRIZE = () => ({ id: Date.now(), name: '', image: '', winnerCount: 1, substituteCount: 1 });
+
+export function useRaffleForm({ importedComments, onClearImported, activeRaffleId }) {
   const [comments, setComments] = useState([]);
-  const [brand, setBrand] = useState({ name: '', logo: '', raffleName: '', postUrl: '' });
-  const [prizes, setPrizes] = useState([
-    { id: Date.now(), name: '', image: '', winnerCount: 1, substituteCount: 1 },
-  ]);
+  const [brand, setBrand] = useState({ ...EMPTY_BRAND });
+  const [prizes, setPrizes] = useState([EMPTY_PRIZE()]);
   const [entryMethod, setEntryMethod] = useState('one_per_user');
   const [minMentions, setMinMentions] = useState(0);
   const [mentionMode, setMentionMode] = useState('per_comment');
@@ -31,10 +32,22 @@ export function useRaffleForm({ importedComments, onClearImported }) {
   const [keywordBlacklist, setKeywordBlacklist] = useState('');
   const [userBlacklist, setUserBlacklist] = useState('');
   const [requiredFollowAccounts, setRequiredFollowAccounts] = useState('');
-  const [minRequiredFollows, setMinRequiredFollows] = useState(1);
   const [followVerification, setFollowVerification] = useState({});
   const [followVerifyMessage, setFollowVerifyMessage] = useState('');
   const [followVerifyPending, setFollowVerifyPending] = useState(false);
+  const [requireLike, setRequireLike] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireLike);
+  const [requireSave, setRequireSave] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireSave);
+  const [requireFollowAccounts, setRequireFollowAccounts] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireFollowAccounts);
+  const [requireMentionRule, setRequireMentionRule] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireMentionRule);
+  const [maxMentions, setMaxMentions] = useState(PARTICIPATION_CRITERIA_DEFAULTS.maxMentions);
+  const [maxCommentsPerUser, setMaxCommentsPerUser] = useState(PARTICIPATION_CRITERIA_DEFAULTS.maxCommentsPerUser);
+  const [allowMultipleCommentsBonus, setAllowMultipleCommentsBonus] = useState(PARTICIPATION_CRITERIA_DEFAULTS.allowMultipleCommentsBonus);
+  const [requireStoryShare, setRequireStoryShare] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireStoryShare);
+  const [requireStoryProofIfPrivate, setRequireStoryProofIfPrivate] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireStoryProofIfPrivate);
+  const [requireMinAge, setRequireMinAge] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireMinAge);
+  const [minAge, setMinAge] = useState(PARTICIPATION_CRITERIA_DEFAULTS.minAge);
+  const [requireRealActiveAccount, setRequireRealActiveAccount] = useState(PARTICIPATION_CRITERIA_DEFAULTS.requireRealActiveAccount);
+  const [disallowBusinessAccounts, setDisallowBusinessAccounts] = useState(PARTICIPATION_CRITERIA_DEFAULTS.disallowBusinessAccounts);
   const [showPrizeProductsInResultsStory, setShowPrizeProductsInResultsStory] = useState(false);
   const [storyBackgroundId, setStoryBackgroundId] = useState(DEFAULT_STORY_BACKGROUND_ID);
   const [storageWarning, setStorageWarning] = useState('');
@@ -43,7 +56,6 @@ export function useRaffleForm({ importedComments, onClearImported }) {
   const [generatingStartingStory, setGeneratingStartingStory] = useState(false);
 
   const configFileInputRef = useRef(null);
-  const parseDebounceRef = useRef(null);
 
   const followAccountList = useMemo(
     () => parseFollowAccountList(requiredFollowAccounts),
@@ -51,13 +63,25 @@ export function useRaffleForm({ importedComments, onClearImported }) {
   );
 
   const followRuleActive = useMemo(
-    () => isFollowRuleActive(requiredFollowAccounts, minRequiredFollows),
-    [requiredFollowAccounts, minRequiredFollows]
+    () => isFollowRuleActive(requiredFollowAccounts, requireFollowAccounts),
+    [requiredFollowAccounts, requireFollowAccounts]
   );
 
   const effectiveMinRequiredFollows = useMemo(
-    () => getEffectiveMinRequiredFollows(followAccountList, minRequiredFollows),
-    [followAccountList, minRequiredFollows]
+    () => (followRuleActive ? getEffectiveMinRequiredFollows(followAccountList) : 0),
+    [followRuleActive, followAccountList]
+  );
+
+  const participationCriteria = useMemo(
+    () => parseParticipationCriteria({
+      requireLike, requireSave, requireFollowAccounts, requireMentionRule,
+      maxMentions, maxCommentsPerUser, allowMultipleCommentsBonus,
+      requireStoryShare, requireStoryProofIfPrivate, requireMinAge, minAge,
+      requireRealActiveAccount, disallowBusinessAccounts,
+    }),
+    [requireLike, requireSave, requireFollowAccounts, requireMentionRule, maxMentions, maxCommentsPerUser, allowMultipleCommentsBonus,
+      requireStoryShare, requireStoryProofIfPrivate, requireMinAge, minAge,
+      requireRealActiveAccount, disallowBusinessAccounts]
   );
 
   const getConfigState = () => ({
@@ -65,13 +89,54 @@ export function useRaffleForm({ importedComments, onClearImported }) {
     uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
     requiredFollowAccounts,
     minRequiredFollows: effectiveMinRequiredFollows,
+    ...participationCriteria,
     showPrizeProductsInResultsStory,
     storyBackgroundId,
   });
 
-  const applyImportedConfig = (config) => {
-    setBrand(config.brand);
-    setPrizes(config.prizes);
+  const applyParticipationCriteria = (config) => {
+    const c = parseParticipationCriteria(config);
+    setRequireLike(c.requireLike);
+    setRequireSave(c.requireSave);
+    setRequireFollowAccounts(c.requireFollowAccounts);
+    setRequireMentionRule(c.requireMentionRule);
+    setMaxMentions(c.maxMentions);
+    setMaxCommentsPerUser(c.maxCommentsPerUser);
+    setAllowMultipleCommentsBonus(c.allowMultipleCommentsBonus);
+    setRequireStoryShare(c.requireStoryShare);
+    setRequireStoryProofIfPrivate(c.requireStoryProofIfPrivate);
+    setRequireMinAge(c.requireMinAge);
+    setMinAge(c.minAge);
+    setRequireRealActiveAccount(c.requireRealActiveAccount);
+    setDisallowBusinessAccounts(c.disallowBusinessAccounts);
+  };
+
+  const applyImportedConfig = async (config) => {
+    let logo = config.brand?.logo || '';
+    if (logo) {
+      try {
+        logo = await resizeUploadedImage(logo, 'logo');
+      } catch {
+        /* orijinal korunur */
+      }
+    }
+
+    const importedPrizes = await Promise.all(
+      (config.prizes || []).map(async (prize) => {
+        let image = prize.image || '';
+        if (image) {
+          try {
+            image = await resizeUploadedImage(image, 'prize');
+          } catch {
+            /* orijinal korunur */
+          }
+        }
+        return { ...prize, image };
+      })
+    );
+
+    setBrand({ ...config.brand, logo });
+    setPrizes(importedPrizes);
     setEntryMethod(config.entryMethod);
     setMinMentions(config.minMentions);
     setMentionMode(config.mentionMode);
@@ -81,55 +146,139 @@ export function useRaffleForm({ importedComments, onClearImported }) {
     setKeywordBlacklist(config.keywordBlacklist);
     setUserBlacklist(config.userBlacklist);
     setRequiredFollowAccounts(config.requiredFollowAccounts || '');
-    setMinRequiredFollows(config.minRequiredFollows ?? 1);
+    applyParticipationCriteria(config);
+    if (config.requiredFollowAccounts?.trim() && config.requireFollowAccounts == null) {
+      setRequireFollowAccounts(true);
+    }
+    if ((config.minMentions > 0 || config.maxMentions > 0 || config.uniqueMentions) && config.requireMentionRule == null) {
+      setRequireMentionRule(true);
+    }
     setShowPrizeProductsInResultsStory(Boolean(config.showPrizeProductsInResultsStory));
     setStoryBackgroundId(config.storyBackgroundId || DEFAULT_STORY_BACKGROUND_ID);
   };
 
-  useEffect(() => {
-    loadSetupState().then((saved) => {
-      if (!saved) return;
-      if (saved.rawText) setRawText(saved.rawText);
-      if (saved.comments) setComments(saved.comments);
-      if (saved.brand) setBrand(saved.brand);
-      if (saved.prizes) setPrizes(saved.prizes);
-      if (saved.entryMethod) setEntryMethod(saved.entryMethod);
-      if (saved.minMentions != null) setMinMentions(saved.minMentions);
-      if (saved.mentionMode) setMentionMode(saved.mentionMode);
-      if (saved.weightedEntry != null) setWeightedEntry(saved.weightedEntry);
-      if (saved.uniqueMentions != null) setUniqueMentions(saved.uniqueMentions);
-      if (saved.keywordRequired) setKeywordRequired(saved.keywordRequired);
-      if (saved.keywordBlacklist) setKeywordBlacklist(saved.keywordBlacklist);
-      if (saved.userBlacklist) setUserBlacklist(saved.userBlacklist);
-      if (saved.requiredFollowAccounts) setRequiredFollowAccounts(saved.requiredFollowAccounts);
-      if (saved.minRequiredFollows != null) setMinRequiredFollows(saved.minRequiredFollows);
-      if (saved.followVerification) setFollowVerification(saved.followVerification);
-      if (saved.showPrizeProductsInResultsStory != null) {
-        setShowPrizeProductsInResultsStory(Boolean(saved.showPrizeProductsInResultsStory));
-      }
-      if (saved.storyBackgroundId) {
-        setStoryBackgroundId(saved.storyBackgroundId);
-      }
-    });
-  }, []);
+  const applySavedState = (saved) => {
+    if (saved.comments) setComments(saved.comments);
+    else setComments([]);
+    if (saved.brand) setBrand(saved.brand);
+    if (saved.prizes) setPrizes(saved.prizes);
+    if (saved.entryMethod) setEntryMethod(saved.entryMethod);
+    if (saved.minMentions != null) setMinMentions(saved.minMentions);
+    if (saved.mentionMode) setMentionMode(saved.mentionMode);
+    if (saved.weightedEntry != null) setWeightedEntry(saved.weightedEntry);
+    if (saved.uniqueMentions != null) setUniqueMentions(saved.uniqueMentions);
+    if (saved.keywordRequired) setKeywordRequired(saved.keywordRequired);
+    else setKeywordRequired('');
+    if (saved.keywordBlacklist) setKeywordBlacklist(saved.keywordBlacklist);
+    else setKeywordBlacklist('');
+    if (saved.userBlacklist) setUserBlacklist(saved.userBlacklist);
+    else setUserBlacklist('');
+    if (saved.requiredFollowAccounts) setRequiredFollowAccounts(saved.requiredFollowAccounts);
+    else setRequiredFollowAccounts('');
+    if (saved.followVerification) setFollowVerification(saved.followVerification);
+    else setFollowVerification({});
+    applyParticipationCriteria(saved);
+    if (saved.requiredFollowAccounts?.trim() && saved.requireFollowAccounts == null) {
+      setRequireFollowAccounts(true);
+    }
+    if ((saved.minMentions > 0 || saved.maxMentions > 0 || saved.uniqueMentions) && saved.requireMentionRule == null) {
+      setRequireMentionRule(true);
+    }
+    if (saved.showPrizeProductsInResultsStory != null) {
+      setShowPrizeProductsInResultsStory(Boolean(saved.showPrizeProductsInResultsStory));
+    }
+    if (saved.storyBackgroundId) {
+      setStoryBackgroundId(saved.storyBackgroundId);
+    } else {
+      setStoryBackgroundId(DEFAULT_STORY_BACKGROUND_ID);
+    }
+  };
+
+  const resetForm = () => {
+    setComments([]);
+    setBrand({ ...EMPTY_BRAND });
+    setPrizes([EMPTY_PRIZE()]);
+    setEntryMethod('one_per_user');
+    setMinMentions(0);
+    setMentionMode('per_comment');
+    setWeightedEntry(false);
+    setUniqueMentions(false);
+    setKeywordRequired('');
+    setKeywordBlacklist('');
+    setUserBlacklist('');
+    setRequiredFollowAccounts('');
+    setFollowVerification({});
+    setFollowVerifyMessage('');
+    setFollowVerifyPending(false);
+    applyParticipationCriteria(PARTICIPATION_CRITERIA_DEFAULTS);
+    setRequireFollowAccounts(false);
+    setRequireMentionRule(false);
+    setShowPrizeProductsInResultsStory(false);
+    setStoryBackgroundId(DEFAULT_STORY_BACKGROUND_ID);
+    setConfigMessage('');
+  };
 
   useEffect(() => {
+    if (!activeRaffleId) return undefined;
+    let cancelled = false;
+
+    loadSetupState(activeRaffleId).then((saved) => {
+      if (cancelled) return;
+      if (!saved) {
+        resetForm();
+        return;
+      }
+      applySavedState(saved);
+      recompressStoredImages(saved);
+    });
+
+    return () => { cancelled = true; };
+  }, [activeRaffleId]);
+
+  const recompressStoredImages = async (saved) => {
+    try {
+      if (saved.brand?.logo) {
+        const logo = await recompressIfNeeded(saved.brand.logo, 'logo');
+        if (logo !== saved.brand.logo) {
+          setBrand((prev) => ({ ...prev, logo }));
+        }
+      }
+      if (saved.prizes?.length) {
+        const prizesCompressed = await Promise.all(
+          saved.prizes.map(async (prize) => {
+            if (!prize.image) return prize;
+            const image = await recompressIfNeeded(prize.image, 'prize');
+            return image === prize.image ? prize : { ...prize, image };
+          })
+        );
+        if (prizesCompressed.some((p, i) => p.image !== saved.prizes[i]?.image)) {
+          setPrizes(prizesCompressed);
+        }
+      }
+    } catch (err) {
+      console.warn('Görsel sıkıştırma atlandı:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (!activeRaffleId) return undefined;
     const timeoutId = window.setTimeout(() => {
       saveSetupState({
-        rawText, comments, brand, prizes,
+        comments, brand, prizes,
         entryMethod, minMentions, mentionMode, weightedEntry,
         uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
         requiredFollowAccounts,
         minRequiredFollows: effectiveMinRequiredFollows,
         followVerification,
+        ...participationCriteria,
         showPrizeProductsInResultsStory,
         storyBackgroundId,
-      }).then((saved) => {
+      }, activeRaffleId).then((saved) => {
         setStorageWarning(saved ? '' : 'Tarayıcı depolama alanı dolu olabilir; ayarlar tam kaydedilemedi.');
       });
     }, 400);
     return () => window.clearTimeout(timeoutId);
-  }, [rawText, comments, brand, prizes, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist, requiredFollowAccounts, effectiveMinRequiredFollows, followVerification, showPrizeProductsInResultsStory, storyBackgroundId]);
+  }, [activeRaffleId, comments, brand, prizes, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist, requiredFollowAccounts, requireFollowAccounts, requireMentionRule, effectiveMinRequiredFollows, followVerification, participationCriteria, showPrizeProductsInResultsStory, storyBackgroundId]);
 
   useEffect(() => {
     const loadResults = () => {
@@ -162,14 +311,13 @@ export function useRaffleForm({ importedComments, onClearImported }) {
     }
 
     const participants = Array.from(new Set(comments.map((c) => c.username)));
-    const request = buildFollowVerifyRequest(participants, requiredFollowAccounts, effectiveMinRequiredFollows);
+    const request = buildFollowVerifyRequest(participants, requiredFollowAccounts, requireFollowAccounts);
     localStorage.setItem(FOLLOW_VERIFY_REQUEST_KEY, JSON.stringify(request));
-  }, [comments, followRuleActive, requiredFollowAccounts, effectiveMinRequiredFollows]);
+  }, [comments, followRuleActive, requiredFollowAccounts, requireFollowAccounts]);
 
   useEffect(() => {
     if (importedComments?.length > 0) {
       setComments(importedComments);
-      setRawText('');
     }
   }, [importedComments]);
 
@@ -202,40 +350,18 @@ export function useRaffleForm({ importedComments, onClearImported }) {
       return;
     }
     const participants = Array.from(new Set(comments.map((c) => c.username)));
-    const request = buildFollowVerifyRequest(participants, requiredFollowAccounts, effectiveMinRequiredFollows);
+    const request = buildFollowVerifyRequest(participants, requiredFollowAccounts, requireFollowAccounts);
     localStorage.setItem(FOLLOW_VERIFY_REQUEST_KEY, JSON.stringify(request));
     setFollowVerifyPending(true);
     setFollowVerifyMessage(`${participants.length} katılımcı için doğrulama hazır. Chrome eklentisini açıp "Takip Şartlarını Doğrula" butonuna basın. Instagram oturumunuz açık olmalıdır.`);
   };
 
-  const handleImageUpload = (e, callback) => {
+  const handleImageUpload = (e, callback, preset = 'prize') => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const maxSize = 800;
-        let { width, height } = img;
-        if (width > maxSize || height > maxSize) {
-          if (width > height) {
-            height = Math.round((height / width) * maxSize);
-            width = maxSize;
-          } else {
-            width = Math.round((width / height) * maxSize);
-            height = maxSize;
-          }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        callback(canvas.toDataURL('image/jpeg', 0.82));
-      };
-      img.onerror = () => callback(event.target.result);
-      img.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
+    resizeImageFromFile(file, preset)
+      .then(callback)
+      .catch(() => alert('Görsel yüklenemedi. JPG veya PNG deneyin.'));
     e.target.value = '';
   };
 
@@ -243,37 +369,7 @@ export function useRaffleForm({ importedComments, onClearImported }) {
   const removePrize = (id) => { if (prizes.length > 1) setPrizes(prizes.filter((p) => p.id !== id)); };
   const updatePrize = (id, field, value) => setPrizes(prizes.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
 
-  const handleTextChange = (e) => {
-    const text = e.target.value;
-    setRawText(text);
-    if (parseDebounceRef.current) clearTimeout(parseDebounceRef.current);
-    if (!text.trim()) { setComments([]); return; }
-    parseDebounceRef.current = setTimeout(() => setComments(parseRawText(text)), 250);
-  };
-
-  const handleCSVUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const parsed = parseCSV(event.target.result);
-      if (parsed.length > 0) {
-        setComments(parsed);
-        setRawText('');
-      } else {
-        alert('CSV dosyası ayrıştırılamadı.');
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const loadDemoData = () => {
-    setComments(MOCK_COMMENTS_PRESET);
-    setRawText('');
-  };
-
   const clearData = () => {
-    setRawText('');
     setComments([]);
     if (onClearImported) onClearImported();
   };
@@ -294,10 +390,11 @@ export function useRaffleForm({ importedComments, onClearImported }) {
 
       const mentions = (comment.text.match(/@[a-zA-Z0-9._]+/g) || []).map((m) => m.replace('@', '').toLowerCase());
       let validMentions = [...mentions];
-      if (uniqueMentions) {
+      if (requireMentionRule && uniqueMentions) {
         validMentions = Array.from(new Set(validMentions.filter((m) => m !== username)));
       }
-      if (minMentions > 0 && mentionMode === 'per_comment' && validMentions.length < minMentions) return;
+      if (requireMentionRule && minMentions > 0 && mentionMode === 'per_comment' && validMentions.length < minMentions) return;
+      if (requireMentionRule && maxMentions > 0 && mentionMode === 'per_comment' && validMentions.length > maxMentions) return;
 
       if (!userEntries[username]) {
         userEntries[username] = { username: comment.username, comments: [], allMentions: new Set() };
@@ -308,28 +405,35 @@ export function useRaffleForm({ importedComments, onClearImported }) {
 
     const tickets = [];
     Object.values(userEntries).forEach((userData) => {
+      let commentsForTickets = userData.comments;
+      if (maxCommentsPerUser > 0) {
+        commentsForTickets = commentsForTickets.slice(0, maxCommentsPerUser);
+      }
+      if (commentsForTickets.length === 0) return;
+
       const totalUniqueMentions = userData.allMentions.size;
-      if (minMentions > 0 && mentionMode === 'cumulative' && totalUniqueMentions < minMentions) return;
+      if (requireMentionRule && minMentions > 0 && mentionMode === 'cumulative' && totalUniqueMentions < minMentions) return;
+      if (requireMentionRule && maxMentions > 0 && mentionMode === 'cumulative' && totalUniqueMentions > maxMentions) return;
       if (!passesFollowRule(userData.username)) return;
 
       let ticketCount = 0;
-      if (minMentions > 0 && weightedEntry) ticketCount = Math.floor(totalUniqueMentions / minMentions);
+      if (requireMentionRule && minMentions > 0 && weightedEntry) ticketCount = Math.floor(totalUniqueMentions / minMentions);
       else if (entryMethod === 'one_per_user') ticketCount = 1;
-      else ticketCount = userData.comments.length;
+      else ticketCount = commentsForTickets.length;
 
       for (let i = 0; i < ticketCount; i += 1) {
         tickets.push({
           username: userData.username,
           comment: entryMethod === 'one_per_comment' && !weightedEntry
-            ? userData.comments[i]?.text || userData.comments[0].text
-            : userData.comments[0].text,
+            ? commentsForTickets[i]?.text || commentsForTickets[0].text
+            : commentsForTickets[0].text,
           ticketIndex: i + 1,
           totalTickets: ticketCount,
         });
       }
     });
     return tickets;
-  }, [comments, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist, followRuleActive, followVerification]);
+  }, [comments, entryMethod, requireMentionRule, minMentions, maxMentions, maxCommentsPerUser, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist, followRuleActive, followVerification]);
 
   const uniqueParticipantsCount = useMemo(
     () => new Set(ticketsPool.map((t) => t.username.toLowerCase())).size,
@@ -380,9 +484,9 @@ export function useRaffleForm({ importedComments, onClearImported }) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
-        applyImportedConfig(parseConfigFromTxt(event.target.result));
+        await applyImportedConfig(parseConfigFromTxt(event.target.result));
         setConfigMessage(`"${file.name}" dosyasından tanımlar yüklendi.`);
       } catch (err) {
         alert(err.message || 'Ayar dosyası okunamadı.');
@@ -429,6 +533,7 @@ export function useRaffleForm({ importedComments, onClearImported }) {
       uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist,
       requiredFollowAccounts,
       minRequiredFollows: effectiveMinRequiredFollows,
+      ...participationCriteria,
       showPrizeProductsInResultsStory,
       storyBackgroundId,
       followVerification,
@@ -454,18 +559,28 @@ export function useRaffleForm({ importedComments, onClearImported }) {
     uniqueMentions, setUniqueMentions, keywordRequired, setKeywordRequired,
     keywordBlacklist, setKeywordBlacklist, userBlacklist, setUserBlacklist,
     requiredFollowAccounts, setRequiredFollowAccounts,
-    minRequiredFollows, setMinRequiredFollows,
+    requireFollowAccounts, setRequireFollowAccounts,
+    requireMentionRule, setRequireMentionRule,
     followAccountList, followRuleActive, effectiveMinRequiredFollows,
     followVerification, followVerifyMessage, followVerifyPending,
     handlePrepareFollowVerification, getFollowStatusForUser,
+    requireLike, setRequireLike, requireSave, setRequireSave,
+    maxMentions, setMaxMentions, maxCommentsPerUser, setMaxCommentsPerUser,
+    allowMultipleCommentsBonus, setAllowMultipleCommentsBonus,
+    requireStoryShare, setRequireStoryShare,
+    requireStoryProofIfPrivate, setRequireStoryProofIfPrivate,
+    requireMinAge, setRequireMinAge, minAge, setMinAge,
+    requireRealActiveAccount, setRequireRealActiveAccount,
+    disallowBusinessAccounts, setDisallowBusinessAccounts,
+    participationCriteria,
     showPrizeProductsInResultsStory, setShowPrizeProductsInResultsStory,
     storyBackgroundId, setStoryBackgroundId,
-    rawText, comments, handleTextChange, handleCSVUpload, loadDemoData, clearData,
+    comments, clearData,
     handleImageUpload, ticketsPool, uniqueParticipantsCount, participantStats, filteredOutCount,
     storageWarning, configMessage,
     generatingSetupStory, generatingStartingStory,
     handleExportConfigTxt, handleImportConfigTxt,
     handleGenerateSetupStory, handleGenerateStartingStory,
-    configFileInputRef, buildSetupConfig, validateStart,
+    configFileInputRef, buildSetupConfig, validateStart, resetForm,
   };
 }
