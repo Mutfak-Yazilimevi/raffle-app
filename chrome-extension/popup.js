@@ -302,9 +302,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnVerifyFollows,
   });
 
-  function applyScrapeUiState({ count, phase }) {
+  function applyScrapeUiState({ count, phase, expectedTotal }) {
     commentCountEl.textContent = count;
-    progressBar.style.width = `${Math.min(20 + count * 2, 100)}%`;
+    const target = expectedTotal > count ? expectedTotal : Math.max(count, 20);
+    progressBar.style.width = `${Math.min(20 + (count / target) * 80, 100)}%`;
 
     if (phase === 'ready' && count > 0) {
       isScraping = false;
@@ -312,7 +313,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnStart.style.display = 'flex';
       btnStart.textContent = 'Yorumları Çekmeye Devam Et';
       btnExport.disabled = false;
-      scrollStatusEl.textContent = `${count} yorum hazır — Çekilişe Gönder'e basın`;
+      const totalHint = expectedTotal > count ? ` / ${expectedTotal}` : '';
+      scrollStatusEl.textContent = `${count}${totalHint} yorum hazır — Çekilişe Gönder'e basın`;
       scrollStatusEl.className = 'status-value success';
       progressBar.style.width = '100%';
       notifyScrapingStopped();
@@ -322,12 +324,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (count > 0) {
       clearZeroCommentHintTimer();
       btnExport.disabled = isScraping;
+      const totalHint = expectedTotal > count ? ` / ${expectedTotal}` : '';
       if (phase === 'stalled') {
-        scrollStatusEl.textContent = `${count} yorum · daha fazlası deneniyor…`;
+        scrollStatusEl.textContent = `${count}${totalHint} yorum · daha fazlası yükleniyor…`;
       } else if (isScraping) {
-        scrollStatusEl.textContent = `${count} yorum · tarama sürüyor…`;
+        scrollStatusEl.textContent = `${count}${totalHint} yorum · tarama sürüyor…`;
       } else {
-        scrollStatusEl.textContent = `${count} yorum çekildi`;
+        scrollStatusEl.textContent = `${count}${totalHint} yorum çekildi`;
       }
       scrollStatusEl.className = 'status-value success';
     } else if (isScraping) {
@@ -341,6 +344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       applyScrapeUiState({
         count: message.count,
         phase: message.phase,
+        expectedTotal: message.expectedTotal || 0,
       });
     }
 

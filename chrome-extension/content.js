@@ -49,10 +49,12 @@ const BLOCKED_ARIA_FRAGMENTS = [
 const SCRAPE_MIN_INTERVAL_MS = 100;
 const OBSERVER_DEBOUNCE_MS = 180;
 const NOTIFY_MIN_INTERVAL_MS = 300;
-const SCROLL_INTERVAL_MIN_MS = 550;
-const SCROLL_INTERVAL_MAX_MS = 1200;
-const STALL_STEP_THRESHOLD = 5;
-const AUTO_FINISH_STEP_THRESHOLD = 14;
+const SCROLL_INTERVAL_MIN_MS = 450;
+const SCROLL_INTERVAL_MAX_MS = 900;
+const STALL_STEP_THRESHOLD = 6;
+const AUTO_FINISH_IDLE_STEPS = 18;
+const AUTO_FINISH_IDLE_STEPS_LONG = 55;
+const OPEN_RETRY_STEP_INTERVAL = 8;
 
 let scrapingActive = false;
 let scrapingTimer = null;
@@ -72,11 +74,124 @@ let scrollIntervalMs = SCROLL_INTERVAL_MIN_MS;
 let clickedLoadMoreKeys = new Set();
 let menuDismissStep = 0;
 let unchangedStepCount = 0;
+let expectedCommentTotal = 0;
+let lastNetworkIngestCount = 0;
 
 window.addEventListener('message', (event) => {
   if (event.source !== window || event.data?.type !== 'RAFFLE_IG_NETWORK') return;
   ingestCommentsFromNetworkPayload(event.data.body);
 });
+
+function parseCountToken(raw) {
+  if (!raw) return 0;
+  const normalized = String(raw).replace(/[^\d]/g, '');
+  const value = parseInt(normalized, 10);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function detectExpectedCommentTotal() {
+  let expandBest = expectedCommentTotal;
+  let genericBest = 0;
+  const sources = [];
+
+  for (const el of document.querySelectorAll('button, a, span, [role="button"], [aria-label]')) {
+    const text = `${el.textContent || ''} ${el.getAttribute('aria-label') || ''}`.replace(/\s+/g, ' ').trim();
+    if (text && text.length <= 120) sources.push(text);
+  }
+
+  const expandPatterns = [
+    /view\s+all\s+([\d.,\s]+)\s+comments?/i,
+    /see\s+all\s+([\d.,\s]+)\s+comments?/i,
+    /([\d.,\s]+)\s+yorum(?:un)?\s+tümün/i,
+    /tüm\s+([\d.,\s]+)\s+yorum/u,
+  ];
+
+  const genericPatterns = [
+    /([\d.,\s]+)\s+yorum\b/u,
+    /([\d.,\s]+)\s+comments?\b/i,
+  ];
+
+  for (const text of sources) {
+    for (const pattern of expandPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        expandBest = Math.max(expandBest, parseCountToken(match[1]));
+      }
+    }
+
+    if (/tümün|view\s+all|see\s+all/i.test(text)) continue;
+
+    for (const pattern of genericPatterns) {
+      const match = text.match(pattern);
+      if (!match) continue;
+      const value = parseCountToken(match[1]);
+      if (value > 20 || value > commentsMap.size + 8) {
+        genericBest = Math.max(genericBest, value);
+      }
+    }
+  }
+
+  if (expandBest > 0) {
+    expectedCommentTotal = expandBest;
+  } else if (genericBest > 0) {
+    expectedCommentTotal = Math.max(expectedCommentTotal, genericBest);
+  }
+
+  return expectedCommentTotal;
+}
+
+function findExpandCommentsControl() {
+  const root = getScrapeRoot();
+
+  for (const el of root.querySelectorAll('button, a, span, [role="button"], [aria-label]')) {
+    const label = getElementLabel(el);
+    if (matchesOpenCommentsLabel(label) || matchesLoadMoreLabel(label)) return true;
+
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (text.length <= 100 && EXPAND_ALL_PATTERNS.some((pattern) => pattern.test(text))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasMoreCommentsExpected() {
+  detectExpectedCommentTotal();
+  if (expectedCommentTotal > 0 && commentsMap.size + 3 < expectedCommentTotal) {
+    return true;
+  }
+
+  if (commentsMap.size >= 10 && commentsMap.size <= 20 && unchangedStepCount < AUTO_FINISH_IDLE_STEPS_LONG) {
+    const root = getScrapeRoot();
+    if (countRowsInRoot(root) > commentsMap.size + 2) return true;
+    if (findExpandCommentsControl()) return true;
+  }
+
+  return false;
+}
+
+function shouldAutoFinish() {
+  detectExpectedCommentTotal();
+
+  if (hasMoreCommentsExpected()) {
+    return unchangedStepCount >= AUTO_FINISH_IDLE_STEPS_LONG;
+  }
+
+  if (expectedCommentTotal > 0 && commentsMap.size >= expectedCommentTotal) {
+    return unchangedStepCount >= 4;
+  }
+
+  return unchangedStepCount >= AUTO_FINISH_IDLE_STEPS;
+}
+
+function countRowsInRoot(root) {
+  let count = 0;
+  for (const container of root.querySelectorAll('ul, [role="list"]')) {
+    count += container.querySelectorAll(':scope > li, :scope > [role="listitem"]').length;
+  }
+  return count;
+}
 
 function getScrapeRoot() {
   return document.querySelector('div[role="dialog"]')
@@ -94,10 +209,16 @@ function addComment(username, text) {
 function ingestCommentsFromNetworkPayload(payload) {
   if (!payload) return;
 
+  const before = commentsMap.size;
   try {
     walkForNetworkComments(JSON.parse(payload));
   } catch (_) {
     /* ignore invalid JSON */
+  }
+
+  if (commentsMap.size > before) {
+    unchangedStepCount = 0;
+    notifyPopup();
   }
 }
 
@@ -264,7 +385,8 @@ function findCommentSection() {
   let bestScore = 0;
 
   for (const container of root.querySelectorAll('ul, [role="list"]')) {
-    const score = scoreCommentContainer(container);
+    const directItems = container.querySelectorAll(':scope > li, :scope > [role="listitem"]');
+    const score = scoreCommentContainer(container) + directItems.length * 3;
     if (score > bestScore) {
       bestScore = score;
       bestContainer = container;
@@ -272,6 +394,17 @@ function findCommentSection() {
   }
 
   return bestContainer;
+}
+
+function scrapeAllCommentLists(root, forceFull = false) {
+  let maxItems = 0;
+
+  for (const container of root.querySelectorAll('ul, [role="list"]')) {
+    if (scoreCommentContainer(container) < 1) continue;
+    maxItems = Math.max(maxItems, scrapeCommentList(container, forceFull));
+  }
+
+  return maxItems;
 }
 
 function scrapeCommentList(container, forceFull = false) {
@@ -308,15 +441,18 @@ function findScrollContainer(element) {
 }
 
 function refreshCommentTargets() {
+  const previousUl = commentUl;
   commentUl = findCommentSection();
   scrollContainer = commentUl
     ? findScrollContainer(commentUl) || findScrollContainer(commentUl.parentElement)
     : null;
-  loadMoreRoot = commentUl?.closest('article')
-    || document.querySelector('div[role="dialog"]')
+  loadMoreRoot = document.querySelector('div[role="dialog"]')
+    || commentUl?.closest('article')
     || document.querySelector('main')
     || document;
-  lastParsedLiCount = 0;
+  if (commentUl !== previousUl) {
+    lastParsedLiCount = 0;
+  }
 }
 
 function scrapeVisibleComments(forceFull = false) {
@@ -329,14 +465,15 @@ function scrapeVisibleComments(forceFull = false) {
   if (!commentUl || !commentUl.isConnected) refreshCommentTargets();
 
   const root = getScrapeRoot();
+  const inDialog = root.getAttribute?.('role') === 'dialog';
   let maxItems = 0;
 
-  if (commentUl && commentUl.isConnected) {
-    maxItems = Math.max(maxItems, scrapeCommentList(commentUl, forceFull));
+  if (inDialog || scrapingActive) {
+    maxItems = scrapeAllCommentLists(root, forceFull);
+  } else if (commentUl && commentUl.isConnected) {
+    maxItems = scrapeCommentList(commentUl, forceFull);
   } else {
-    for (const container of root.querySelectorAll('ul, [role="list"]')) {
-      maxItems = Math.max(maxItems, scrapeCommentList(container, true));
-    }
+    maxItems = scrapeAllCommentLists(root, true);
   }
 
   scrapeEmbeddedPageData();
@@ -352,7 +489,7 @@ function notifyPopup(force = false) {
   let phase = 'loading';
   if (!scrapingActive) {
     phase = 'ready';
-  } else if (commentsMap.size > 0 && unchangedStepCount >= AUTO_FINISH_STEP_THRESHOLD) {
+  } else if (shouldAutoFinish() && commentsMap.size > 0) {
     phase = 'ready';
   } else if (commentsMap.size > 0 && unchangedStepCount >= STALL_STEP_THRESHOLD) {
     phase = 'stalled';
@@ -365,6 +502,7 @@ function notifyPopup(force = false) {
     count: commentsMap.size,
     phase,
     unchangedSteps: unchangedStepCount,
+    expectedTotal: expectedCommentTotal,
   }).catch(() => {});
 }
 
@@ -415,10 +553,20 @@ function scrollCommentArea() {
     if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) {
       container.scrollTop = container.scrollHeight;
     }
+    container.dispatchEvent(new WheelEvent('wheel', {
+      deltaY: 900,
+      bubbles: true,
+      cancelable: true,
+    }));
   }
 }
 
-function clearLoadMoreClickCache() {
+function clearLoadMoreClickCache(keepOpenKeys = true) {
+  if (!keepOpenKeys) {
+    clickedLoadMoreKeys = new Set();
+    return;
+  }
+
   const next = new Set();
   for (const key of clickedLoadMoreKeys) {
     if (key.startsWith('open:') || key.startsWith('open-text:') || key.startsWith('open-svg:')) {
@@ -438,7 +586,7 @@ function isInsideCommentRow(el) {
 
 function findClickableAncestor(el) {
   if (!(el instanceof Element)) return null;
-  return el.closest('button, a, [role="button"], [role="link"]')
+  return el.closest('button, a, [role="button"], [role="link"], [tabindex="0"]')
     || (el.getAttribute('tabindex') === '0' ? el : null)
     || el;
 }
@@ -584,7 +732,7 @@ function clickLoadMoreButtons(forceRetry = false) {
   dismissAccidentalMenus();
 
   if (forceRetry) {
-    clearLoadMoreClickCache();
+    clearLoadMoreClickCache(false);
   }
 
   const root = loadMoreRoot || getScrapeRoot();
@@ -628,14 +776,24 @@ function finishScrapingAsReady() {
 function autoScrollStep() {
   scrollStepCount += 1;
   const countBefore = commentsMap.size;
+  const stalled = unchangedStepCount >= 2;
+  const needMore = hasMoreCommentsExpected();
 
-  if (scrollStepCount === 1 || (scrollStepCount % 6 === 0 && commentsMap.size === 0)) {
+  if (
+    scrollStepCount === 1
+    || scrollStepCount % OPEN_RETRY_STEP_INTERVAL === 0
+    || (stalled && needMore)
+  ) {
     clickOpenCommentsPanel();
     refreshCommentTargets();
   }
 
-  if (scrollStepCount === 1 || unchangedStepCount >= 2 || (scrollStepCount % 6 === 0 && commentsMap.size === lastCountAtClick)) {
-    clickLoadMoreButtons(unchangedStepCount >= 3);
+  if (
+    scrollStepCount === 1
+    || stalled
+    || (scrollStepCount % 6 === 0 && commentsMap.size === lastCountAtClick)
+  ) {
+    clickLoadMoreButtons(stalled && needMore);
     lastCountAtClick = commentsMap.size;
   }
 
@@ -643,9 +801,11 @@ function autoScrollStep() {
   ensureObserver();
   scrollCommentArea();
 
+  const networkBefore = commentsMap.size;
+  scrapeEmbeddedPageData();
   const count = scrapeVisibleComments(true);
 
-  if (count === countBefore) {
+  if (count === countBefore && count === networkBefore) {
     unchangedStepCount += 1;
     scrollIntervalMs = Math.min(SCROLL_INTERVAL_MAX_MS, scrollIntervalMs + 80);
   } else {
@@ -655,7 +815,7 @@ function autoScrollStep() {
 
   notifyPopup();
 
-  if (unchangedStepCount >= AUTO_FINISH_STEP_THRESHOLD) {
+  if (shouldAutoFinish()) {
     finishScrapingAsReady();
     return count;
   }
@@ -675,11 +835,15 @@ function startObserver() {
   stopObserver();
   if (!commentUl) return;
 
+  const observeTarget = commentUl.closest('div[role="dialog"]') || commentUl;
   observer = new MutationObserver(() => {
     scheduleObserverScrape();
   });
 
-  observer.observe(commentUl, { childList: true, subtree: false });
+  observer.observe(observeTarget, {
+    childList: true,
+    subtree: observeTarget !== commentUl,
+  });
   observedCommentUl = commentUl;
 }
 
@@ -731,6 +895,8 @@ function resetState() {
   scrollIntervalMs = SCROLL_INTERVAL_MIN_MS;
   menuDismissStep = 0;
   unchangedStepCount = 0;
+  expectedCommentTotal = 0;
+  lastNetworkIngestCount = 0;
   clickedLoadMoreKeys = new Set();
 }
 
