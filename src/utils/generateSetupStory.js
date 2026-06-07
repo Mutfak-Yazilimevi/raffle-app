@@ -5,6 +5,7 @@ import {
   downloadCanvasAsPng,
   drawStoryAttribution,
   drawStoryBrandHeader,
+  wrapText,
   STORY_WIDTH,
 } from './storyCanvas';
 import { getRulesSummaryLines } from './raffleConfigFile';
@@ -38,7 +39,17 @@ export async function generateSetupStory(state) {
     disallowBusinessAccounts: ruleFields.disallowBusinessAccounts,
   };
 
-  const { canvas, ctx, p } = initStoryCanvas(storyBackgroundId, 100, 1720);
+  const { canvas, ctx, p } = initStoryCanvas(storyBackgroundId, 80, 1780);
+
+  const PRIZE_IMAGE_SIZE = 234;
+  const PRIZE_CARD_X = 130;
+  const PRIZE_CARD_W = 820;
+  const PRIZE_IMAGE_X = 150;
+  const PRIZE_TEXT_X = PRIZE_IMAGE_X + PRIZE_IMAGE_SIZE + 28;
+  const PRIZE_TEXT_MAX_WIDTH = PRIZE_CARD_X + PRIZE_CARD_W - PRIZE_TEXT_X - 24;
+  const PRIZE_NAME_LINE_HEIGHT = 36;
+  const PRIZE_META_FONT = '600 22px Inter';
+  const PRIZE_NAME_FONT = 'bold 30px Inter';
 
   let y = await drawStoryBrandHeader(ctx, brand, p, 140, {
     raffleFallback: 'ÇEKİLİŞ DUYURUSU',
@@ -63,26 +74,33 @@ export async function generateSetupStory(state) {
   ctx.fillText('🎁 ÖDÜLLER', STORY_WIDTH / 2, y);
   y += 50;
 
-  const visiblePrizes = (prizes || []).slice(0, 6);
+  const visiblePrizes = (prizes || []).slice(0, 4);
 
   for (let i = 0; i < visiblePrizes.length; i += 1) {
     const prize = visiblePrizes[i];
-    const rowH = 110;
     const rowY = y;
+
+    ctx.font = PRIZE_NAME_FONT;
+    const prizeName = prize.name?.trim() || `${i + 1}. Ödül`;
+    const nameLines = wrapText(ctx, prizeName, PRIZE_TEXT_MAX_WIDTH);
+    const nameBlockHeight = nameLines.length * PRIZE_NAME_LINE_HEIGHT;
+    const rowH = Math.max(PRIZE_IMAGE_SIZE + 32, nameBlockHeight + 56);
 
     ctx.fillStyle = p.cardFill;
     ctx.beginPath();
-    drawRoundRect(ctx, 130, rowY, 820, rowH, 18);
+    drawRoundRect(ctx, PRIZE_CARD_X, rowY, PRIZE_CARD_W, rowH, 18);
     ctx.fill();
-
-    let textX = 170;
 
     if (prize.image) {
       try {
         const prizeImg = await loadImage(prize.image);
-        const size = 78;
-        ctx.drawImage(prizeImg, 150, rowY + 16, size, size);
-        textX = 250;
+        ctx.drawImage(
+          prizeImg,
+          PRIZE_IMAGE_X,
+          rowY + Math.max(16, (rowH - PRIZE_IMAGE_SIZE) / 2),
+          PRIZE_IMAGE_SIZE,
+          PRIZE_IMAGE_SIZE,
+        );
       } catch {
         // resim yoksa metinle devam
       }
@@ -90,16 +108,19 @@ export async function generateSetupStory(state) {
 
     ctx.textAlign = 'left';
     ctx.fillStyle = p.textPrimary;
-    ctx.font = 'bold 30px Inter';
-    const prizeName = prize.name || `${i + 1}. Ödül`;
-    ctx.fillText(prizeName.length > 28 ? `${prizeName.slice(0, 26)}...` : prizeName, textX, rowY + 48);
+    ctx.font = PRIZE_NAME_FONT;
+    let textY = rowY + Math.max(28, (rowH - nameBlockHeight - 30) / 2) + 24;
+    for (const line of nameLines) {
+      ctx.fillText(line, PRIZE_TEXT_X, textY);
+      textY += PRIZE_NAME_LINE_HEIGHT;
+    }
 
     ctx.fillStyle = p.accent;
-    ctx.font = '600 22px Inter';
+    ctx.font = PRIZE_META_FONT;
     ctx.fillText(
       `${prize.winnerCount || 1} asil · ${prize.substituteCount || 0} yedek`,
-      textX,
-      rowY + 78
+      PRIZE_TEXT_X,
+      rowY + rowH - 22,
     );
 
     y += rowH + 16;
