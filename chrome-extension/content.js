@@ -96,6 +96,7 @@ let clickedLoadMoreKeys = new Set();
 let menuDismissStep = 0;
 let unchangedStepCount = 0;
 let expectedCommentTotal = 0;
+let pinnedExpectedTotal = 0;
 let lastNetworkIngestCount = 0;
 
 window.addEventListener('message', (event) => {
@@ -202,8 +203,18 @@ function detectCommentCountFromEmbedded() {
   return best;
 }
 
+function pinExpectedCommentTotal(value) {
+  if (!Number.isFinite(value) || value <= 0) return;
+  pinnedExpectedTotal = Math.max(pinnedExpectedTotal, value);
+  expectedCommentTotal = pinnedExpectedTotal;
+}
+
+function getTargetCommentTotal() {
+  return Math.max(pinnedExpectedTotal, expectedCommentTotal, detectCommentCountFromPostMetrics());
+}
+
 function detectExpectedCommentTotal() {
-  let expandBest = expectedCommentTotal;
+  let expandBest = pinnedExpectedTotal || expectedCommentTotal;
   let genericBest = 0;
   const metricsBest = detectCommentCountFromPostMetrics();
   const embeddedBest = detectCommentCountFromEmbedded();
@@ -246,8 +257,13 @@ function detectExpectedCommentTotal() {
     }
   }
 
-  if (metricsBest > 0) {
-    expectedCommentTotal = metricsBest;
+  if (metricsBest > 0) pinExpectedCommentTotal(metricsBest);
+  if (expandBest > 0) pinExpectedCommentTotal(expandBest);
+  if (embeddedBest > 0) pinExpectedCommentTotal(embeddedBest);
+  if (genericBest > 0) pinExpectedCommentTotal(genericBest);
+
+  if (pinnedExpectedTotal > 0) {
+    expectedCommentTotal = pinnedExpectedTotal;
     return expectedCommentTotal;
   }
 
@@ -266,10 +282,11 @@ function detectExpectedCommentTotal() {
 
 function getMaxIdleSteps() {
   detectExpectedCommentTotal();
-  if (expectedCommentTotal > getFinalizedCommentCount() + 5) {
+  const target = getTargetCommentTotal();
+  if (target > getFinalizedCommentCount() + 5) {
     return Math.min(
       MAX_IDLE_STEPS_CAP,
-      Math.max(AUTO_FINISH_IDLE_STEPS_LONG, Math.ceil(expectedCommentTotal / 3)),
+      Math.max(AUTO_FINISH_IDLE_STEPS_LONG, Math.ceil(target / 3)),
     );
   }
   return AUTO_FINISH_IDLE_STEPS;
@@ -293,14 +310,18 @@ function findExpandCommentsControl() {
 
 function hasMoreCommentsExpected() {
   detectExpectedCommentTotal();
-  if (expectedCommentTotal > 0 && getFinalizedCommentCount() + 3 < expectedCommentTotal) {
+  const target = getTargetCommentTotal();
+  const collected = getFinalizedCommentCount();
+
+  if (target > 0 && collected + 3 < target) {
     return true;
   }
 
-  if (commentsList.length >= 10 && commentsList.length <= 20 && unchangedStepCount < getMaxIdleSteps()) {
+  if (collected >= 10 && collected <= 20 && unchangedStepCount < getMaxIdleSteps()) {
     const root = getScrapeRoot();
-    if (countRowsInRoot(root) > getFinalizedCommentCount() + 2) return true;
+    if (countRowsInRoot(root) > collected + 2) return true;
     if (findExpandCommentsControl()) return true;
+    if (target > collected + 3) return true;
   }
 
   return false;
@@ -308,12 +329,14 @@ function hasMoreCommentsExpected() {
 
 function shouldAutoFinish() {
   detectExpectedCommentTotal();
+  const target = getTargetCommentTotal();
+  const collected = getFinalizedCommentCount();
 
   if (hasMoreCommentsExpected()) {
     return unchangedStepCount >= getMaxIdleSteps();
   }
 
-  if (expectedCommentTotal > 0 && getFinalizedCommentCount() >= expectedCommentTotal) {
+  if (target > 0 && collected >= target) {
     return unchangedStepCount >= 4;
   }
 
@@ -337,7 +360,9 @@ function isTopLevelCommentContainerKey(key) {
   if (!key || typeof key !== 'string') return false;
   if (REPLY_BRANCH_KEYS.has(key)) return false;
   if (TOP_LEVEL_COMMENT_CONTAINER_KEYS.has(key)) return true;
-  if (/threaded|child|reply|preview_child/i.test(key)) return false;
+  if (/threaded|child|reply|preview_child|preview_comments/i.test(key)) return false;
+  if (/xdt_api.*comment/i.test(key)) return true;
+  if (/\bcomments?\b/i.test(key) && !/child|thread|reply|preview/i.test(key)) return true;
   return /parent_comment|media_to_(?:parent_)?comment/i.test(key);
 }
 
@@ -467,6 +492,12 @@ function walkForNetworkComments(value, depth = 0, parentKey = '') {
   if (Array.isArray(value.edges) && canIngestNetworkCommentAt(parentKey)) {
     for (const edge of value.edges) {
       if (edge?.node) ingestCommentNode(edge.node);
+    }
+  }
+
+  if (Array.isArray(value.items) && canIngestNetworkCommentAt(parentKey)) {
+    for (const item of value.items) {
+      ingestCommentNode(item);
     }
   }
 
@@ -670,9 +701,7 @@ function scoreCommentContainer(container) {
   return score;
 }
 
-function findCommentSection() {
-  const root = getScrapeRoot();
-
+function findCommentSection(root = getScrapeRoot()) {
   let bestContainer = null;
   let bestScore = 0;
 
@@ -686,6 +715,29 @@ function findCommentSection() {
   }
 
   return bestContainer;
+}
+
+function refreshCommentTargets() {
+  const previousUl = commentUl;
+  const dialog = document.querySelector('div[role="dialog"]');
+  const nextUl = dialog ? findCommentSection(dialog) : findCommentSection();
+
+  if (nextUl) {
+    commentUl = nextUl;
+  } else if (!commentUl?.isConnected) {
+    commentUl = findCommentSection();
+  }
+
+  scrollContainer = commentUl
+    ? findScrollContainer(commentUl) || findScrollContainer(commentUl.parentElement)
+    : null;
+  loadMoreRoot = dialog
+    || commentUl?.closest('article')
+    || document.querySelector('main')
+    || document;
+  if (commentUl !== previousUl) {
+    lastParsedLiCount = 0;
+  }
 }
 
 function scrapeAllCommentLists(root, forceFull = false) {
@@ -761,21 +813,6 @@ function findScrollContainer(element) {
   return best;
 }
 
-function refreshCommentTargets() {
-  const previousUl = commentUl;
-  commentUl = findCommentSection();
-  scrollContainer = commentUl
-    ? findScrollContainer(commentUl) || findScrollContainer(commentUl.parentElement)
-    : null;
-  loadMoreRoot = document.querySelector('div[role="dialog"]')
-    || commentUl?.closest('article')
-    || document.querySelector('main')
-    || document;
-  if (commentUl !== previousUl) {
-    lastParsedLiCount = 0;
-  }
-}
-
 function scrapeVisibleComments(forceFull = false) {
   const now = Date.now();
   if (!forceFull && now - lastScrapeTime < SCRAPE_MIN_INTERVAL_MS) {
@@ -823,7 +860,7 @@ function notifyPopup(force = false) {
     count: getFinalizedCommentCount(),
     phase,
     unchangedSteps: unchangedStepCount,
-    expectedTotal: expectedCommentTotal,
+    expectedTotal: getTargetCommentTotal(),
     metricsTotal: detectCommentCountFromPostMetrics(),
   }).catch(() => {});
 }
@@ -880,6 +917,18 @@ function scrollCommentArea() {
       bubbles: true,
       cancelable: true,
     }));
+  }
+}
+
+function clearOpenCommentsClickCache() {
+  for (const key of [...clickedLoadMoreKeys]) {
+    if (
+      key.startsWith('open')
+      || key.startsWith('expand')
+      || key.startsWith('metrics-comment')
+    ) {
+      clickedLoadMoreKeys.delete(key);
+    }
   }
 }
 
@@ -1086,7 +1135,6 @@ function clickPostMetricsCommentControl() {
 }
 
 function clickOpenCommentsPanel() {
-  if (clickPostMetricsCommentControl()) return true;
   if (clickExpandCommentsLinks(false)) return true;
 
   const root = loadMoreRoot || getScrapeRoot();
@@ -1109,7 +1157,7 @@ function clickOpenCommentsPanel() {
     if (btn && clickTrackedTarget(btn, `open-svg:${label}`)) return true;
   }
 
-  return false;
+  return clickPostMetricsCommentControl();
 }
 
 function clickLoadMoreButtons(forceRetry = false) {
@@ -1159,9 +1207,14 @@ function finishScrapingAsReady() {
 
 function autoScrollStep() {
   scrollStepCount += 1;
-  const countBefore = commentsList.length;
+  const countBefore = getFinalizedCommentCount();
   const stalled = unchangedStepCount >= 2;
   const needMore = hasMoreCommentsExpected();
+
+  if (needMore && countBefore <= 20 && (stalled || scrollStepCount % OPEN_RETRY_STEP_INTERVAL === 0)) {
+    clearOpenCommentsClickCache();
+    clickExpandCommentsLinks(true);
+  }
 
   if (
     scrollStepCount === 1
@@ -1176,7 +1229,8 @@ function autoScrollStep() {
   if (
     scrollStepCount === 1
     || stalled
-    || (scrollStepCount % 6 === 0 && getFinalizedCommentCount() === lastCountAtClick)
+    || needMore
+    || (scrollStepCount % 4 === 0 && getFinalizedCommentCount() === lastCountAtClick)
   ) {
     clickLoadMoreButtons(stalled && needMore);
     lastCountAtClick = getFinalizedCommentCount();
@@ -1186,7 +1240,7 @@ function autoScrollStep() {
   ensureObserver();
   scrollCommentArea();
 
-  const networkBefore = commentsList.length;
+  const networkBefore = getFinalizedCommentCount();
   scrapeEmbeddedPageData();
   const count = scrapeVisibleComments(true);
 
@@ -1283,6 +1337,7 @@ function resetState() {
   menuDismissStep = 0;
   unchangedStepCount = 0;
   expectedCommentTotal = 0;
+  pinnedExpectedTotal = 0;
   lastNetworkIngestCount = 0;
   clickedLoadMoreKeys = new Set();
 }
