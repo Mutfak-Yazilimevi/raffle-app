@@ -107,9 +107,81 @@ function findScrollableElement(root) {
 }
 
 function getListScanRoot() {
-  return document.querySelector('div[role="dialog"]')
+  return document.querySelector('div[role="dialog"], [aria-modal="true"]')
     || document.querySelector('main')
     || document;
+}
+
+/** main > header > section > div > div:nth-child(n) > a — sınıflar değişken. */
+function findProfileHeaderStatLinks() {
+  const main = document.querySelector('main');
+  if (!main) return null;
+
+  const header = main.querySelector('header');
+  if (!header) return null;
+
+  const section = header.querySelector('section');
+  if (!section) return null;
+
+  const row = section.querySelector(':scope > div');
+  if (!row) return null;
+
+  const links = {
+    posts: row.querySelector(':scope > div:nth-child(1) > a'),
+    followers: row.querySelector(':scope > div:nth-child(2) > a'),
+    following: row.querySelector(':scope > div:nth-child(3) > a'),
+  };
+
+  for (const block of row.querySelectorAll(':scope > div')) {
+    const anchor = block.querySelector(':scope > a[href^="/"]');
+    if (!anchor) continue;
+    const href = anchor.getAttribute('href') || '';
+    if (/\/followers\/?/i.test(href)) links.followers = anchor;
+    if (/\/following\/?/i.test(href)) links.following = anchor;
+  }
+
+  return links;
+}
+
+function dispatchClick(el) {
+  if (!(el instanceof Element)) return false;
+  try {
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+    el.click();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function openProfileListPopup(listKind = 'followers') {
+  await waitForProfileReady(6000);
+
+  const statLinks = findProfileHeaderStatLinks();
+  let link = listKind === 'following' ? statLinks?.following : statLinks?.followers;
+
+  if (!link) {
+    link = document.querySelector(
+      listKind === 'following'
+        ? 'main header a[href*="/following"]'
+        : 'main header a[href*="/followers"]',
+    );
+  }
+
+  if (!link) return false;
+
+  dispatchClick(link);
+  await sleep(300);
+
+  const started = Date.now();
+  while (Date.now() - started < 5000) {
+    const dialog = document.querySelector('div[role="dialog"], [aria-modal="true"]');
+    if (dialog && dialog.querySelectorAll('a[href^="/"]').length >= 3) return true;
+    await sleep(60);
+  }
+
+  return Boolean(document.querySelector('div[role="dialog"], [aria-modal="true"]'));
 }
 
 function collectUsernamesFromRoot(root, foundSet, requiredSet) {
@@ -255,6 +327,20 @@ async function scanAccountFollowersForParticipants(targetAccountInput, participa
   }
 
   networkUsernames.clear();
+
+  const popupOpened = await openProfileListPopup('followers');
+  if (!popupOpened) {
+    return {
+      ok: false,
+      error: 'followers_popup_failed',
+      targetAccount,
+      matched: [],
+      pendingRemaining: pending.size,
+      rounds: 0,
+      completedVia: 'popup_open_failed',
+    };
+  }
+
   await waitForListPageReady();
 
   const root = getListScanRoot();
@@ -357,7 +443,7 @@ function buildResultsFromMatchMap(participants, requiredAccounts, minRequired, m
       requiredAccounts,
       followedSet,
       minRequired,
-      'bulk_followers',
+      'bulk_followers_popup',
     );
   }
 
@@ -366,6 +452,11 @@ function buildResultsFromMatchMap(participants, requiredAccounts, minRequired, m
 
 async function scanFollowingSurface(requiredAccounts, minRequired, initialFound = new Set()) {
   networkUsernames.clear();
+
+  const popupOpened = await openProfileListPopup('following');
+  if (!popupOpened) {
+    await waitForListPageReady();
+  }
 
   const root = getListScanRoot();
   const scrollEl = findScrollableElement(root);
@@ -454,5 +545,7 @@ if (typeof window !== 'undefined') {
     scanAccountFollowersForParticipants,
     buildResultsFromMatchMap,
     waitForProfileReady,
+    findProfileHeaderStatLinks,
+    openProfileListPopup,
   };
 }

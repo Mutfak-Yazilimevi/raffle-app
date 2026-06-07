@@ -116,8 +116,6 @@ async function verifyParticipantOnTab(tabId, participant, requiredAccounts, minR
 
   if (profileResult?.meetsRequirement) return profileResult;
 
-  await chrome.tabs.update(tabId, { url: `https://www.instagram.com/${encoded}/following/` });
-  await waitForTabComplete(tabId).catch(() => {});
   await ensureContentScripts(tabId);
 
   const listResult = await sendTabMessage(tabId, {
@@ -141,10 +139,11 @@ async function verifyParticipantOnTab(tabId, participant, requiredAccounts, minR
 
 async function scanAccountFollowersOnTab(tabId, targetAccount, participants, requestId) {
   await chrome.tabs.update(tabId, {
-    url: `https://www.instagram.com/${encodeURIComponent(targetAccount)}/followers/`,
+    url: `https://www.instagram.com/${encodeURIComponent(targetAccount)}/`,
   });
   await waitForTabComplete(tabId).catch(() => {});
   await ensureContentScripts(tabId);
+  await waitForProfileReady(tabId);
 
   return sendTabMessage(tabId, {
     type: 'SCAN_FOLLOWERS_FOR_PARTICIPANTS',
@@ -246,7 +245,7 @@ async function runBulkFollowVerification({
     current: 0,
     total: participants.length,
     participant: requiredFollowAccounts.join(', '),
-    message: `@${requiredFollowAccounts[0]} takipçileri taranıyor…`,
+    message: `@${requiredFollowAccounts[0]} profilinde takipçi listesi açılıyor…`,
   });
 
   async function scanRequiredAccount(targetAccount, tabId) {
@@ -291,7 +290,7 @@ async function runBulkFollowVerification({
         followed,
         missing,
         meetsRequirement: followed.length >= minRequiredFollows,
-        checkedVia: 'bulk_followers',
+        checkedVia: 'bulk_followers_popup',
       };
     }
 

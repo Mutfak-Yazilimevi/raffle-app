@@ -372,7 +372,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     localStorage.setItem(FOLLOW_VERIFY_REQUEST_KEY, JSON.stringify(request));
     setFollowVerifyPending(true);
     const bulkHint = participants.length >= 60
-      ? ' Büyük liste modu: zorunlu hesapların takipçi listesi taranır (profil profil gezmekten çok daha hızlı).'
+      ? ' Büyük liste modu: zorunlu hesap profiline gidilir, takipçi popup listesi açılır ve katılımcılar eşleştirilir.'
       : '';
     setFollowVerifyMessage(`${participants.length} benzersiz katılımcı için doğrulama hazır.${bulkHint} Chrome eklentisini açıp "Takip Şartlarını Doğrula" butonuna basın. Zorunlu hesaplardan birine giriş yapmış olmalısınız.`);
   };
