@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Puzzle, Download, ExternalLink, ArrowLeft } from 'lucide-react';
-import { LINKS, resolveInstagramUrl } from '../config';
+import { LINKS } from '../config';
 import { downloadChromeExtension } from '../utils/downloadExtension';
+import OpenInstagramLink from './OpenInstagramLink';
 import { loadSetupState } from '../utils/setupStorage';
 
 export default function ExtensionPage({ onBack, postUrl: postUrlProp }) {
@@ -92,15 +93,7 @@ export default function ExtensionPage({ onBack, postUrl: postUrlProp }) {
           >
             <ExternalLink size={16} /> Kurulum Rehberi
           </a>
-          <a
-            href={resolveInstagramUrl(postUrl)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-secondary"
-            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px', borderColor: 'rgba(225, 48, 108, 0.3)' }}
-          >
-            Instagram&apos;ı Aç
-          </a>
+          <OpenInstagramLink postUrl={postUrl} />
         </div>
       </div>
     </div>

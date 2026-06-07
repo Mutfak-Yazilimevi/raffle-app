@@ -134,6 +134,17 @@ function mergeNetworkUsernames(foundSet, requiredSet) {
   return false;
 }
 
+function collectAllUsernamesFromRoot(root, intoSet) {
+  for (const link of root.querySelectorAll('a[href^="/"]')) {
+    const username = extractUsernameFromHref(link.getAttribute('href'));
+    if (username) intoSet.add(username);
+  }
+  for (const username of networkUsernames) {
+    intoSet.add(username);
+  }
+  return intoSet.size;
+}
+
 function collectPendingMatches(root, pending, matched) {
   for (const link of root.querySelectorAll('a[href^="/"]')) {
     const username = extractUsernameFromHref(link.getAttribute('href'));
@@ -240,7 +251,7 @@ async function scanAccountFollowersForParticipants(targetAccountInput, participa
   const totalCount = participants.length;
 
   if (participants.length === 0) {
-    return { ok: true, targetAccount, matched: [], pendingRemaining: 0, rounds: 0 };
+    return { ok: true, targetAccount, matched: [], pendingRemaining: 0, rounds: 0, completedVia: 'empty' };
   }
 
   networkUsernames.clear();
@@ -248,38 +259,79 @@ async function scanAccountFollowersForParticipants(targetAccountInput, participa
 
   const root = getListScanRoot();
   const scrollEl = findScrollableElement(root);
-  const maxRounds = options.maxRounds || Math.min(1500, Math.max(180, Math.ceil(totalCount * 0.4)));
-  const staleLimit = options.staleLimit || 10;
+  const maxRounds = options.maxRounds || Math.min(4000, Math.max(600, Math.ceil(totalCount * 4)));
+  const staleLimit = options.staleLimit || 35;
+  const scrollWaitMs = options.scrollWaitMs || 120;
   let staleRounds = 0;
   let rounds = 0;
+  let lastListSize = 0;
+  let completedVia = 'max_rounds';
 
-  collectPendingMatches(root, pending, matched);
+  const measureList = () => {
+    const seen = new Set();
+    collectAllUsernamesFromRoot(root, seen);
+    return seen.size;
+  };
+
+  const ingestMatches = () => collectPendingMatches(root, pending, matched);
+
+  ingestMatches();
+  lastListSize = measureList();
   reportBulkScanProgress(targetAccount, matched.size, totalCount, pending.size);
+
   if (pending.size === 0) {
-    return { ok: true, targetAccount, matched: Array.from(matched), pendingRemaining: 0, rounds: 0 };
+    return {
+      ok: true,
+      targetAccount,
+      matched: Array.from(matched),
+      pendingRemaining: 0,
+      rounds: 0,
+      completedVia: 'all_matched',
+    };
   }
 
   while (rounds < maxRounds && staleRounds < staleLimit && pending.size > 0) {
     rounds += 1;
-    const before = matched.size;
 
+    const beforeScrollTop = scrollEl.scrollTop;
     scrollEl.scrollTop += Math.max(520, scrollEl.clientHeight * 0.92);
+    if (scrollEl.scrollTop === beforeScrollTop) {
+      scrollEl.scrollTop = scrollEl.scrollHeight;
+    }
     scrollEl.dispatchEvent(new WheelEvent('wheel', {
       deltaY: 950,
       bubbles: true,
       cancelable: true,
     }));
-    await sleep(55);
+    await sleep(scrollWaitMs);
 
-    collectPendingMatches(root, pending, matched);
+    ingestMatches();
+    if (pending.size === 0) {
+      completedVia = 'all_matched';
+      break;
+    }
 
-    if (pending.size === 0) break;
-    if (matched.size === before) staleRounds += 1;
-    else staleRounds = 0;
+    const listSize = measureList();
+    const atBottom = scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 40;
 
-    if (rounds % 8 === 0) {
+    if (listSize > lastListSize) {
+      staleRounds = 0;
+      lastListSize = listSize;
+    } else if (atBottom) {
+      staleRounds += 1;
+    } else {
+      staleRounds = 0;
+    }
+
+    if (rounds % 6 === 0) {
       reportBulkScanProgress(targetAccount, matched.size, totalCount, pending.size);
     }
+  }
+
+  if (pending.size === 0) {
+    completedVia = 'all_matched';
+  } else if (staleRounds >= staleLimit) {
+    completedVia = 'list_exhausted';
   }
 
   closeTopDialog();
@@ -291,6 +343,8 @@ async function scanAccountFollowersForParticipants(targetAccountInput, participa
     matched: Array.from(matched),
     pendingRemaining: pending.size,
     rounds,
+    completedVia,
+    listSize: lastListSize,
   };
 }
 

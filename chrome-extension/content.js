@@ -58,12 +58,23 @@ const AUTO_FINISH_IDLE_STEPS_LONG = 55;
 const OPEN_RETRY_STEP_INTERVAL = 8;
 const MAX_IDLE_STEPS_CAP = 240;
 
+const REPLY_BRANCH_KEYS = new Set([
+  'child_comments',
+  'edge_threaded_comments',
+  'threaded_comments',
+  'preview_child_comments',
+  'replies',
+  'child_comment_count',
+]);
+
 let scrapingActive = false;
 let scrapingTimer = null;
 let observer = null;
 let observerFlushTimer = null;
 let observedCommentUl = null;
-let commentsMap = new Map();
+let commentsList = [];
+let seenCommentIds = new Set();
+let seenDomKeys = new Set();
 let commentUl = null;
 let scrollContainer = null;
 let loadMoreRoot = null;
@@ -151,7 +162,7 @@ function detectExpectedCommentTotal() {
       const match = text.match(pattern);
       if (!match) continue;
       const value = parseCountToken(match[1]);
-      if (value > 20 || value > commentsMap.size + 8) {
+      if (value > 20 || value > commentsList.length + 8) {
         genericBest = Math.max(genericBest, value);
       }
     }
@@ -172,7 +183,7 @@ function detectExpectedCommentTotal() {
 
 function getMaxIdleSteps() {
   detectExpectedCommentTotal();
-  if (expectedCommentTotal > commentsMap.size + 5) {
+  if (expectedCommentTotal > commentsList.length + 5) {
     return Math.min(
       MAX_IDLE_STEPS_CAP,
       Math.max(AUTO_FINISH_IDLE_STEPS_LONG, Math.ceil(expectedCommentTotal / 3)),
@@ -199,13 +210,13 @@ function findExpandCommentsControl() {
 
 function hasMoreCommentsExpected() {
   detectExpectedCommentTotal();
-  if (expectedCommentTotal > 0 && commentsMap.size + 3 < expectedCommentTotal) {
+  if (expectedCommentTotal > 0 && commentsList.length + 3 < expectedCommentTotal) {
     return true;
   }
 
-  if (commentsMap.size >= 10 && commentsMap.size <= 20 && unchangedStepCount < getMaxIdleSteps()) {
+  if (commentsList.length >= 10 && commentsList.length <= 20 && unchangedStepCount < getMaxIdleSteps()) {
     const root = getScrapeRoot();
-    if (countRowsInRoot(root) > commentsMap.size + 2) return true;
+    if (countRowsInRoot(root) > commentsList.length + 2) return true;
     if (findExpandCommentsControl()) return true;
   }
 
@@ -219,7 +230,7 @@ function shouldAutoFinish() {
     return unchangedStepCount >= getMaxIdleSteps();
   }
 
-  if (expectedCommentTotal > 0 && commentsMap.size >= expectedCommentTotal) {
+  if (expectedCommentTotal > 0 && commentsList.length >= expectedCommentTotal) {
     return unchangedStepCount >= 4;
   }
 
@@ -240,30 +251,60 @@ function getScrapeRoot() {
     || document;
 }
 
-function addComment(username, text) {
+function getStoredCommentCount() {
+  return commentsList.length;
+}
+
+function addComment(username, text, options = {}) {
+  if (options.isReply) return false;
+
   const trimmed = (text || '').trim();
   if (!username || !trimmed || isNoise(trimmed)) return false;
-  commentsMap.set(`${username.toLowerCase()}:${trimmed}`, { username, text: trimmed });
+
+  const commentId = options.commentId ? String(options.commentId) : null;
+  if (commentId) {
+    if (seenCommentIds.has(commentId)) return false;
+    seenCommentIds.add(commentId);
+  } else if (options.domKey) {
+    if (seenDomKeys.has(options.domKey)) return false;
+    seenDomKeys.add(options.domKey);
+  }
+
+  commentsList.push({
+    username,
+    text: trimmed,
+    id: commentId || undefined,
+    isReply: false,
+  });
   return true;
 }
 
 function ingestCommentsFromNetworkPayload(payload) {
   if (!payload) return;
 
-  const before = commentsMap.size;
+  const before = getStoredCommentCount();
   try {
     walkForNetworkComments(JSON.parse(payload));
   } catch (_) {
     /* ignore invalid JSON */
   }
 
-  if (commentsMap.size > before) {
+  if (getStoredCommentCount() > before) {
     unchangedStepCount = 0;
     notifyPopup();
   }
 }
 
+function isReplyCommentNode(node) {
+  if (!node || typeof node !== 'object') return false;
+  if (node.parent_comment_id || node.parent_id) return true;
+  const typeName = String(node.__typename || '');
+  return /child|reply/i.test(typeName) && /comment/i.test(typeName);
+}
+
 function ingestCommentNode(node) {
+  if (isReplyCommentNode(node)) return;
+
   const username =
     node?.user?.username
     || node?.owner?.username
@@ -271,7 +312,8 @@ function ingestCommentNode(node) {
     || node?.from?.username;
 
   const text = node?.text || node?.comment_text || node?.content;
-  if (addComment(username, text)) notifyPopup();
+  const commentId = node?.pk || node?.id;
+  if (addComment(username, text, { commentId, isReply: false })) notifyPopup();
 }
 
 function walkForNetworkComments(value, depth = 0) {
@@ -307,19 +349,15 @@ function walkForNetworkComments(value, depth = 0) {
   if (Array.isArray(value.edges)) {
     for (const edge of value.edges) {
       if (edge?.node) ingestCommentNode(edge.node);
-      walkForNetworkComments(edge, depth + 1);
     }
-  }
-
-  if (Array.isArray(value.comments)) {
-    for (const item of value.comments) {
-      ingestCommentNode(item);
-      walkForNetworkComments(item, depth + 1);
-    }
+    return;
   }
 
   for (const key of Object.keys(value)) {
     if (key === '__typename' || key === 'page_info') continue;
+    if (REPLY_BRANCH_KEYS.has(key)) continue;
+    if (key === 'edges') continue;
+    if (key === 'comments' && (value.text || value.user?.username)) continue;
     walkForNetworkComments(value[key], depth + 1);
   }
 }
@@ -369,8 +407,28 @@ function extractUsername(link) {
   return match[1];
 }
 
+function extractCommentIdFromRow(row) {
+  for (const link of row.querySelectorAll('a[href*="/c/"]')) {
+    const match = (link.getAttribute('href') || '').match(/\/c\/([^/?#]+)/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+function isReplyCommentRow(row) {
+  const item = row.matches?.('li, [role="listitem"]') ? row : row.closest('li, [role="listitem"]');
+  if (!item) return false;
+
+  const parent = item.parentElement;
+  if (!parent) return false;
+
+  const ownerRow = parent.closest('li, [role="listitem"]');
+  return Boolean(ownerRow && ownerRow !== item);
+}
+
 function parseCommentRow(row) {
   if (!row || !(row instanceof Element)) return null;
+  if (isReplyCommentRow(row)) return null;
 
   const userEl = row.querySelector('h2 a, h3 a, a[role="link"], a[href^="/"]');
   let username = null;
@@ -414,13 +472,19 @@ function parseCommentRow(row) {
   }
 
   if (!username || !commentText) return null;
-  return { username, text: commentText };
+  return {
+    username,
+    text: commentText,
+    commentId: extractCommentIdFromRow(row),
+  };
 }
 
 function findCommentRowFromLink(link) {
   let node = link.parentElement;
   for (let depth = 0; depth < 10 && node; depth += 1) {
-    if (node.matches?.('li, [role="listitem"]')) return node;
+    if (node.matches?.('li, [role="listitem"]')) {
+      return isReplyCommentRow(node) ? null : node;
+    }
 
     const textEl = node.querySelector(':scope > span[dir="auto"], :scope > [dir="auto"], span[dir="auto"]');
     if (textEl && node.contains(link) && node !== document.body) {
@@ -434,7 +498,6 @@ function findCommentRowFromLink(link) {
 }
 
 function scrapeCommentsByHeuristic(root) {
-  let added = 0;
   const scope = root.getAttribute?.('role') === 'dialog'
     ? root
     : root.querySelector('div[role="dialog"]')
@@ -447,15 +510,14 @@ function scrapeCommentsByHeuristic(root) {
 
     const row = findCommentRowFromLink(link);
     if (!row || row.closest('header, nav, [role="navigation"]')) continue;
+    if (isReplyCommentRow(row)) continue;
 
     const textEl = row.querySelector('span[dir="auto"], [dir="auto"]');
     if (!textEl) continue;
 
     const text = textEl.textContent.trim();
-    if (addComment(username, text)) added += 1;
+    addComment(username, text, { commentId: extractCommentIdFromRow(row) });
   }
-
-  return added;
 }
 
 function parseCommentLi(li) {
@@ -502,17 +564,12 @@ function findCommentSection() {
 
 function scrapeAllCommentLists(root, forceFull = false) {
   let maxItems = 0;
+  let listIndex = 0;
 
   for (const container of root.querySelectorAll('ul, [role="list"]')) {
     if (scoreCommentContainer(container) < 1) continue;
-    maxItems = Math.max(maxItems, scrapeCommentList(container, forceFull));
-  }
-
-  for (const item of root.querySelectorAll('[role="listitem"]')) {
-    const parsed = parseCommentRow(item);
-    if (parsed) {
-      commentsMap.set(`${parsed.username.toLowerCase()}:${parsed.text}`, parsed);
-    }
+    maxItems = Math.max(maxItems, scrapeCommentList(container, forceFull, listIndex));
+    listIndex += 1;
   }
 
   scrapeCommentsByHeuristic(root);
@@ -520,7 +577,7 @@ function scrapeAllCommentLists(root, forceFull = false) {
   return maxItems;
 }
 
-function scrapeCommentList(container, forceFull = false) {
+function scrapeCommentList(container, forceFull = false, listSlot = 0) {
   const items = container.querySelectorAll(':scope > li, :scope > [role="listitem"]');
   const startIndex = forceFull
     ? 0
@@ -528,9 +585,11 @@ function scrapeCommentList(container, forceFull = false) {
 
   for (let i = startIndex; i < items.length; i += 1) {
     const parsed = parseCommentRow(items[i]);
-    if (parsed) {
-      commentsMap.set(`${parsed.username.toLowerCase()}:${parsed.text}`, parsed);
-    }
+    if (!parsed) continue;
+    addComment(parsed.username, parsed.text, {
+      commentId: parsed.commentId,
+      domKey: parsed.commentId ? null : `dom:${listSlot}:${i}:${parsed.username.toLowerCase()}`,
+    });
   }
 
   return items.length;
@@ -579,7 +638,7 @@ function refreshCommentTargets() {
 function scrapeVisibleComments(forceFull = false) {
   const now = Date.now();
   if (!forceFull && now - lastScrapeTime < SCRAPE_MIN_INTERVAL_MS) {
-    return commentsMap.size;
+    return commentsList.length;
   }
   lastScrapeTime = now;
 
@@ -599,7 +658,7 @@ function scrapeVisibleComments(forceFull = false) {
 
   scrapeEmbeddedPageData();
   lastParsedLiCount = maxItems;
-  return commentsMap.size;
+  return commentsList.length;
 }
 
 function notifyPopup(force = false) {
@@ -610,17 +669,17 @@ function notifyPopup(force = false) {
   let phase = 'loading';
   if (!scrapingActive) {
     phase = 'ready';
-  } else if (shouldAutoFinish() && commentsMap.size > 0) {
+  } else if (shouldAutoFinish() && commentsList.length > 0) {
     phase = 'ready';
-  } else if (commentsMap.size > 0 && unchangedStepCount >= STALL_STEP_THRESHOLD) {
+  } else if (commentsList.length > 0 && unchangedStepCount >= STALL_STEP_THRESHOLD) {
     phase = 'stalled';
-  } else if (commentsMap.size > 0) {
+  } else if (commentsList.length > 0) {
     phase = 'scraping';
   }
 
   chrome.runtime.sendMessage({
     type: 'SCRAPE_UPDATE',
-    count: commentsMap.size,
+    count: commentsList.length,
     phase,
     unchangedSteps: unchangedStepCount,
     expectedTotal: expectedCommentTotal,
@@ -944,7 +1003,7 @@ function finishScrapingAsReady() {
 
 function autoScrollStep() {
   scrollStepCount += 1;
-  const countBefore = commentsMap.size;
+  const countBefore = commentsList.length;
   const stalled = unchangedStepCount >= 2;
   const needMore = hasMoreCommentsExpected();
 
@@ -961,17 +1020,17 @@ function autoScrollStep() {
   if (
     scrollStepCount === 1
     || stalled
-    || (scrollStepCount % 6 === 0 && commentsMap.size === lastCountAtClick)
+    || (scrollStepCount % 6 === 0 && commentsList.length === lastCountAtClick)
   ) {
     clickLoadMoreButtons(stalled && needMore);
-    lastCountAtClick = commentsMap.size;
+    lastCountAtClick = commentsList.length;
   }
 
   if (!commentUl || !commentUl.isConnected) refreshCommentTargets();
   ensureObserver();
   scrollCommentArea();
 
-  const networkBefore = commentsMap.size;
+  const networkBefore = commentsList.length;
   scrapeEmbeddedPageData();
   const count = scrapeVisibleComments(true);
 
@@ -1049,11 +1108,13 @@ function stopScraping() {
   stopObserver();
   dismissAccidentalMenus();
   scrapeVisibleComments(true);
-  return commentsMap.size;
+  return commentsList.length;
 }
 
 function resetState() {
-  commentsMap = new Map();
+  commentsList = [];
+  seenCommentIds = new Set();
+  seenDomKeys = new Set();
   commentUl = null;
   scrollContainer = null;
   loadMoreRoot = null;
@@ -1071,7 +1132,12 @@ function resetState() {
 }
 
 function getCommentsArray() {
-  return Array.from(commentsMap.values());
+  return commentsList.map(({ username, text, id, isReply }) => ({
+    username,
+    text,
+    id,
+    isReply: Boolean(isReply),
+  }));
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -1109,7 +1175,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     autoScrollStep();
     scheduleNextScrollStep();
 
-    sendResponse({ status: 'started', count: commentsMap.size });
+    sendResponse({ status: 'started', count: commentsList.length });
   } else if (request.type === 'STOP_SCRAPING') {
     const count = stopScraping();
     sendResponse({ status: 'stopped', count });

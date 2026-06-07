@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Trash2, CheckCircle, Info, Play, Share2, ArrowLeft, Puzzle, ExternalLink, ListOrdered, UserCheck,
 } from 'lucide-react';
+import OpenInstagramLink from './OpenInstagramLink';
 
 export default function RaffleCommentsStep({
   form,
@@ -13,12 +14,47 @@ export default function RaffleCommentsStep({
   const {
     comments, clearData,
     ticketsPool, uniqueParticipantsCount, participantStats, filteredOutCount,
+    activeCriteriaColumns,
     configMessage, generatingStartingStory, handleGenerateStartingStory,
     followRuleActive, followAccountList, effectiveMinRequiredFollows,
     followVerifyMessage, followVerifyPending, handlePrepareFollowVerification,
   } = form;
 
+  const postUrl = form.brand?.postUrl;
   const uniqueCommentUsers = new Set(comments.map((c) => c.username.toLowerCase())).size;
+
+  const criterionStatusStyles = {
+    passed: { bg: 'rgba(16, 185, 129, 0.12)', color: '#10b981', border: 'rgba(16, 185, 129, 0.3)' },
+    failed: { bg: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'rgba(239, 68, 68, 0.25)' },
+    pending: { bg: 'rgba(251, 173, 80, 0.12)', color: 'var(--insta-orange)', border: 'rgba(251, 173, 80, 0.3)' },
+    na: { bg: 'var(--bg-inset)', color: 'var(--text-muted)', border: 'var(--glass-border)' },
+  };
+
+  function renderCriterionCell(cell) {
+    if (!cell) return '—';
+    const style = criterionStatusStyles[cell.status] || criterionStatusStyles.na;
+    return (
+      <span
+        title={cell.value}
+        style={{
+          display: 'inline-block',
+          maxWidth: '160px',
+          padding: '4px 8px',
+          borderRadius: '8px',
+          fontSize: '11px',
+          fontWeight: 600,
+          lineHeight: 1.35,
+          background: style.bg,
+          color: style.color,
+          border: `1px solid ${style.border}`,
+          whiteSpace: 'normal',
+          textAlign: 'center',
+        }}
+      >
+        {cell.value}
+      </span>
+    );
+  }
 
   return (
     <div className="step-page">
@@ -51,9 +87,12 @@ export default function RaffleCommentsStep({
               </p>
             </div>
           </div>
-          <button type="button" className="btn btn-primary" onClick={onOpenExtension}>
-            <ExternalLink size={16} /> Chrome Eklentisi Sayfasına Git
-          </button>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-primary" onClick={onOpenExtension}>
+              <ExternalLink size={16} /> Chrome Eklentisi Sayfasına Git
+            </button>
+            <OpenInstagramLink postUrl={postUrl} />
+          </div>
         </div>
       )}
 
@@ -92,15 +131,16 @@ export default function RaffleCommentsStep({
             </h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               {comments.length > 0 && (
-                <>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                    {comments.length} yorum · {participantStats.length} kişi
-                    {filteredOutCount > 0 && ` · ${filteredOutCount} kişi kurallara takıldı`}
-                  </span>
-                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={clearData}>
-                    <Trash2 size={14} /> Temizle
-                  </button>
-                </>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  {comments.length} yorum · {participantStats.length} kişi
+                  {filteredOutCount > 0 && ` · ${filteredOutCount} kişi kurallara takıldı`}
+                </span>
+              )}
+              <OpenInstagramLink postUrl={postUrl} size="compact" showIcon />
+              {comments.length > 0 && (
+                <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={clearData}>
+                  <Trash2 size={14} /> Temizle
+                </button>
               )}
             </div>
           </div>
@@ -117,25 +157,20 @@ export default function RaffleCommentsStep({
                     <tr style={{ background: 'var(--bg-table-head)', textAlign: 'left' }}>
                       <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, width: '48px' }}>#</th>
                       <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600 }}>Kullanıcı</th>
-                      <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>Yorum</th>
-                      <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>Hak</th>
-                      {followRuleActive && (
-                        <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>Takip</th>
-                      )}
+                      {activeCriteriaColumns.map((col) => (
+                        <th
+                          key={col.id}
+                          style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center', minWidth: '96px' }}
+                        >
+                          {col.label}
+                        </th>
+                      ))}
                       <th style={{ padding: '12px 14px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>Durum</th>
                     </tr>
                   </thead>
                   <tbody>
                     {participantStats.map((person, index) => {
                       const eligible = person.ticketCount > 0;
-                      const follow = person.followStatus || { status: 'na', label: '—' };
-                      const followColors = {
-                        passed: { bg: 'rgba(16, 185, 129, 0.12)', color: '#10b981', border: 'rgba(16, 185, 129, 0.3)' },
-                        failed: { bg: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'rgba(239, 68, 68, 0.25)' },
-                        pending: { bg: 'rgba(251, 173, 80, 0.12)', color: 'var(--insta-orange)', border: 'rgba(251, 173, 80, 0.3)' },
-                        na: { bg: 'transparent', color: 'var(--text-muted)', border: 'var(--glass-border)' },
-                      };
-                      const followStyle = followColors[follow.status] || followColors.na;
                       return (
                         <tr
                           key={person.username.toLowerCase()}
@@ -146,29 +181,11 @@ export default function RaffleCommentsStep({
                         >
                           <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontWeight: 600 }}>{index + 1}</td>
                           <td style={{ padding: '11px 14px', fontWeight: 600 }}>@{person.username}</td>
-                          <td style={{ padding: '11px 14px', textAlign: 'center' }}>{person.commentCount}</td>
-                          <td style={{ padding: '11px 14px', textAlign: 'center', fontWeight: 700, color: eligible ? 'var(--insta-pink)' : 'var(--text-muted)' }}>
-                            {person.ticketCount}
-                          </td>
-                          {followRuleActive && (
-                            <td style={{ padding: '11px 14px', textAlign: 'center' }}>
-                              <span
-                                title={follow.verification?.missing?.length ? `Eksik: @${follow.verification.missing.join(', @')}` : follow.label}
-                                style={{
-                                  display: 'inline-block',
-                                  padding: '4px 8px',
-                                  borderRadius: '50px',
-                                  fontSize: '10px',
-                                  fontWeight: 600,
-                                  background: followStyle.bg,
-                                  color: followStyle.color,
-                                  border: `1px solid ${followStyle.border}`,
-                                }}
-                              >
-                                {follow.label}
-                              </span>
+                          {activeCriteriaColumns.map((col) => (
+                            <td key={col.id} style={{ padding: '11px 14px', textAlign: 'center', verticalAlign: 'middle' }}>
+                              {renderCriterionCell(person.criteria?.cells?.[col.id])}
                             </td>
-                          )}
+                          ))}
                           <td style={{ padding: '11px 14px', textAlign: 'right' }}>
                             <span style={{
                               display: 'inline-block',
@@ -191,7 +208,7 @@ export default function RaffleCommentsStep({
                 </table>
               </div>
               <p style={{ margin: '12px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
-                Çekiliş hakkına göre azalan sırada listelenir.
+                Aktif katılım şartları ve tespit edilen değerler gösterilir. Çekiliş hakkına göre azalan sırada listelenir.
               </p>
             </>
           )}

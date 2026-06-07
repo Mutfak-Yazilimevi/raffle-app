@@ -208,7 +208,13 @@ async function setupFollowVerificationUI(elements) {
         return;
       }
 
-      followVerifyStatus.textContent = 'Tamamlandı — uygulamaya aktarıldı';
+      const passed = response.payload?.summary?.passed;
+      const total = response.payload?.summary?.total;
+      if (typeof passed === 'number' && typeof total === 'number') {
+        followVerifyStatus.textContent = `Tamamlandı — ${passed}/${total} katılımcı takip şartını sağlıyor`;
+      } else {
+        followVerifyStatus.textContent = 'Tamamlandı — uygulamaya aktarıldı';
+      }
       followVerifyStatus.className = 'status-value success';
     });
   };

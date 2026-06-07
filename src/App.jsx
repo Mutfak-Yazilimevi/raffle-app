@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Award, Compass, Puzzle, Megaphone } from 'lucide-react';
 import { LINKS } from './config';
+import { normalizeImportedComments } from './utils/commentParsing';
 import { useRaffleForm } from './hooks/useRaffleForm';
 import RaffleAnnouncement from './components/RaffleAnnouncement';
 import RaffleConfigStep from './components/RaffleConfigStep';
@@ -100,8 +101,8 @@ export default function App() {
       const data = localStorage.getItem('instagram_comments_import');
       if (!data) return;
       try {
-        const comments = JSON.parse(data);
-        if (Array.isArray(comments) && comments.length > 0) {
+        const comments = normalizeImportedComments(JSON.parse(data));
+        if (comments.length > 0) {
           setImportedComments(comments);
           openStudio('comments');
         }

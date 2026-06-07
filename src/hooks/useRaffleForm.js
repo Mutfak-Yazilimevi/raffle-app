@@ -14,7 +14,16 @@ import {
   FOLLOW_VERIFY_RESULTS_KEY,
 } from '../utils/followRules';
 import { parseParticipationCriteria, PARTICIPATION_CRITERIA_DEFAULTS } from '../utils/participationCriteria';
-import { resizeImageFromFile, recompressIfNeeded, resizeUploadedImage } from '../utils/resizeUploadedImage';
+import {
+  aggregateParticipantsFromComments,
+  buildParticipantCriteriaSummary,
+  getActiveParticipantCriteriaColumns,
+  getParticipantRulesContext,
+  isUserBlacklisted,
+  userHasBlacklistedKeyword,
+} from '../utils/participantCriteriaSummary';
+import { normalizeImportedComments } from '../utils/commentParsing';
+import { resizeImageFromFile } from '../utils/resizeUploadedImage';
 
 const EMPTY_BRAND = { name: '', logo: '', raffleName: '', postUrl: '' };
 const EMPTY_PRIZE = () => ({ id: Date.now(), name: '', image: '', winnerCount: 1, substituteCount: 1 });
@@ -292,7 +301,11 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
       try {
         const parsed = JSON.parse(raw);
         setFollowVerification(normalizeFollowVerificationResults(parsed));
-        setFollowVerifyMessage('Takip doğrulama sonuçları yüklendi.');
+        setFollowVerifyMessage(
+          parsed.summary
+            ? `Takip doğrulama tamamlandı: ${parsed.summary.passed}/${parsed.summary.total} katılımcı şartı sağlıyor.`
+            : 'Takip doğrulama sonuçları yüklendi.',
+        );
         setFollowVerifyPending(false);
         localStorage.removeItem(FOLLOW_VERIFY_REQUEST_KEY);
       } catch (err) {
@@ -322,7 +335,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
 
   useEffect(() => {
     if (importedComments?.length > 0) {
-      setComments(importedComments);
+      setComments(normalizeImportedComments(importedComments));
     }
   }, [importedComments]);
 
@@ -451,31 +464,77 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
   const participantStats = useMemo(() => {
     if (comments.length === 0) return [];
 
-    const byUser = {};
-    comments.forEach((comment) => {
-      const key = comment.username.toLowerCase();
-      if (!byUser[key]) {
-        byUser[key] = { username: comment.username, commentCount: 0, ticketCount: 0 };
-      }
-      byUser[key].commentCount += 1;
+    const rulesContext = getParticipantRulesContext({
+      ...participationCriteria,
+      entryMethod,
+      minMentions,
+      mentionMode,
+      weightedEntry,
+      uniqueMentions,
+      keywordRequired,
+      keywordBlacklist,
+      userBlacklist,
+      requiredFollowAccounts,
+      effectiveMinRequiredFollows,
     });
+
+    const byUser = aggregateParticipantsFromComments(comments);
+    const ticketByUser = {};
 
     ticketsPool.forEach((ticket) => {
       const key = ticket.username.toLowerCase();
-      if (byUser[key]) {
-        byUser[key].ticketCount = ticket.totalTickets;
-      }
+      ticketByUser[key] = ticket.totalTickets;
     });
 
-    return Object.values(byUser).map((person) => ({
-      ...person,
-      followStatus: getFollowStatusForUser(person.username),
-    })).sort(
+    return Object.values(byUser).map((userData) => {
+      const key = userData.username.toLowerCase();
+      const ticketCount = ticketByUser[key] || 0;
+      const followStatus = getFollowStatusForUser(userData.username);
+      const criteria = buildParticipantCriteriaSummary(userData, rulesContext, {
+        ticketCount,
+        followStatus,
+        blacklistedUser: isUserBlacklisted(userData.username, userBlacklist),
+        keywordBlocked: userHasBlacklistedKeyword(userData, keywordBlacklist),
+      });
+
+      return {
+        username: userData.username,
+        commentCount: userData.commentCount,
+        ticketCount,
+        followStatus,
+        criteria,
+      };
+    }).sort(
       (a, b) => b.ticketCount - a.ticketCount
         || b.commentCount - a.commentCount
         || a.username.localeCompare(b.username, 'tr')
     );
-  }, [comments, ticketsPool, followRuleActive, followVerification]);
+  }, [
+    comments, ticketsPool, followRuleActive, followVerification,
+    participationCriteria, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions,
+    keywordRequired, keywordBlacklist, userBlacklist, requiredFollowAccounts,
+    effectiveMinRequiredFollows,
+  ]);
+
+  const activeCriteriaColumns = useMemo(() => getActiveParticipantCriteriaColumns(
+    getParticipantRulesContext({
+      ...participationCriteria,
+      entryMethod,
+      minMentions,
+      mentionMode,
+      weightedEntry,
+      uniqueMentions,
+      keywordRequired,
+      keywordBlacklist,
+      userBlacklist,
+      requiredFollowAccounts,
+      effectiveMinRequiredFollows,
+    }),
+  ), [
+    participationCriteria, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions,
+    keywordRequired, keywordBlacklist, userBlacklist, requiredFollowAccounts,
+    effectiveMinRequiredFollows,
+  ]);
 
   const filteredOutCount = useMemo(
     () => participantStats.filter((p) => p.ticketCount === 0).length,
@@ -593,6 +652,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     followAccountList, followRuleActive, effectiveMinRequiredFollows,
     followVerification, followVerifyMessage, followVerifyPending,
     handlePrepareFollowVerification, getFollowStatusForUser,
+    activeCriteriaColumns,
     requireComment, setRequireComment,
     requireLike, setRequireLike, requireSave, setRequireSave,
     maxMentions, setMaxMentions, maxCommentsPerUser, setMaxCommentsPerUser,

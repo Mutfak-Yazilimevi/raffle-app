@@ -55,7 +55,7 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
             onChange={(e) => setBrand({ ...brand, postUrl: e.target.value })}
           />
           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-            Chrome eklentisi sayfasındaki &quot;Instagram&apos;ı Aç&quot; butonu bu adrese gider.
+            Chrome eklentisi ve Yorumlar adımındaki &quot;Instagram&apos;ı Aç&quot; butonu bu adrese gider.
           </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>

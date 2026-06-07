@@ -83,6 +83,19 @@ export function parseRawText(text) {
   return parsedComments;
 }
 
+export function normalizeImportedComments(comments) {
+  if (!Array.isArray(comments)) return [];
+
+  return comments
+    .filter((item) => item && item.username && item.text && !item.isReply)
+    .map((item) => ({
+      username: String(item.username).trim().replace(/^@+/, ''),
+      text: String(item.text).trim(),
+      id: item.id ? String(item.id) : undefined,
+    }))
+    .filter((item) => item.username && item.text);
+}
+
 export function parseCSV(csvText) {
   const lines = csvText.split('\n');
   if (lines.length < 2) return [];

@@ -151,7 +151,7 @@ async function scanAccountFollowersOnTab(tabId, targetAccount, participants, req
     targetAccount,
     participants,
     requestId,
-    maxRounds: Math.min(1500, Math.max(180, Math.ceil(participants.length * 0.4))),
+    maxRounds: Math.min(4000, Math.max(600, Math.ceil(participants.length * 4))),
   });
 }
 
@@ -342,6 +342,10 @@ async function runFollowVerification({
     requiredFollowAccounts: requiredAccounts,
     minRequiredFollows: minRequired,
     results,
+    summary: useBulkMode ? {
+      passed: Object.values(results).filter((r) => r.meetsRequirement).length,
+      total: uniqueParticipants.length,
+    } : null,
   };
 
   if (appTabId) {
