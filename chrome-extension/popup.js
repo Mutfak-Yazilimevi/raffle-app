@@ -331,8 +331,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       clearZeroCommentHintTimer();
       btnExport.disabled = isScraping;
       const totalHint = expectedTotal > count ? ` / ${expectedTotal}` : '';
-      if (phase === 'stalled') {
-        scrollStatusEl.textContent = `${count}${totalHint} yorum · daha fazlası yükleniyor…`;
+      if (phase === 'stalled' || phase === 'recovering') {
+        scrollStatusEl.textContent = phase === 'recovering'
+          ? `${count}${totalHint} yorum · tam panel açılıyor / kaydırılıyor…`
+          : `${count}${totalHint} yorum · daha fazlası yükleniyor…`;
       } else if (isScraping) {
         scrollStatusEl.textContent = `${count}${totalHint} yorum · tarama sürüyor…`;
       } else {

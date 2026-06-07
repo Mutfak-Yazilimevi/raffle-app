@@ -26,7 +26,7 @@
   function publish(body) {
     if (!body || body.length < 40) return;
 
-    const hasComment = COMMENT_HINT.test(body) && /"edges"|"text"|comment_count/i.test(body);
+    const hasComment = COMMENT_HINT.test(body) && /"edges"|"items"|"text"|comment_count/i.test(body);
     const hasFollowing = /following|follower|edge_follow|friendship/i.test(body) && /username|"edges"/i.test(body);
 
     if (!hasComment && !hasFollowing) return;

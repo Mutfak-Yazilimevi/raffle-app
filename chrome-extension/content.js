@@ -69,12 +69,6 @@ const REPLY_BRANCH_KEYS = new Set([
   'comment_replies',
 ]);
 
-const TOP_LEVEL_COMMENT_CONTAINER_KEYS = new Set([
-  'edge_media_to_parent_comment',
-  'edge_media_to_comment',
-  'comments',
-]);
-
 let scrapingActive = false;
 let scrapingTimer = null;
 let observer = null;
@@ -356,24 +350,15 @@ function countRowsInRoot(root) {
   return count;
 }
 
-function isTopLevelCommentContainerKey(key) {
-  if (!key || typeof key !== 'string') return false;
-  if (REPLY_BRANCH_KEYS.has(key)) return false;
-  if (TOP_LEVEL_COMMENT_CONTAINER_KEYS.has(key)) return true;
-  if (/threaded|child|reply|preview_child|preview_comments/i.test(key)) return false;
-  if (/xdt_api.*comment/i.test(key)) return true;
-  if (/\bcomments?\b/i.test(key) && !/child|thread|reply|preview/i.test(key)) return true;
-  return /parent_comment|media_to_(?:parent_)?comment/i.test(key);
-}
-
-function canIngestNetworkCommentAt(parentKey) {
-  return parentKey === 'edges' || isTopLevelCommentContainerKey(parentKey);
+function getCommentsPanelRoot() {
+  return document.querySelector('div[role="dialog"]')
+    || document.querySelector('[aria-modal="true"]')
+    || document.querySelector('main')
+    || document;
 }
 
 function getScrapeRoot() {
-  return document.querySelector('div[role="dialog"]')
-    || document.querySelector('main')
-    || document;
+  return getCommentsPanelRoot();
 }
 
 function getFinalizedCommentCount() {
@@ -475,36 +460,42 @@ function ingestCommentNode(node) {
   if (addComment(username, text, { commentId, isReply: false })) notifyPopup();
 }
 
-function walkForNetworkComments(value, depth = 0, parentKey = '') {
-  if (!value || depth > 20) return;
+function walkForNetworkComments(value, depth = 0, parentKey = '', inReplyBranch = false) {
+  if (!value || depth > 25) return;
+
+  if (REPLY_BRANCH_KEYS.has(parentKey)) {
+    inReplyBranch = true;
+  }
 
   if (Array.isArray(value)) {
-    for (const item of value) walkForNetworkComments(item, depth + 1, parentKey);
+    for (const item of value) walkForNetworkComments(item, depth + 1, parentKey, inReplyBranch);
     return;
   }
 
   if (typeof value !== 'object') return;
 
-  if (value.node && canIngestNetworkCommentAt(parentKey)) {
-    ingestCommentNode(value.node);
-  }
+  if (!inReplyBranch) {
+    if (value.node) ingestCommentNode(value.node);
 
-  if (Array.isArray(value.edges) && canIngestNetworkCommentAt(parentKey)) {
-    for (const edge of value.edges) {
-      if (edge?.node) ingestCommentNode(edge.node);
+    if (Array.isArray(value.edges)) {
+      for (const edge of value.edges) {
+        if (edge?.node) ingestCommentNode(edge.node);
+      }
     }
-  }
 
-  if (Array.isArray(value.items) && canIngestNetworkCommentAt(parentKey)) {
-    for (const item of value.items) {
-      ingestCommentNode(item);
+    if (Array.isArray(value.items)) {
+      for (const item of value.items) ingestCommentNode(item);
     }
   }
 
   for (const key of Object.keys(value)) {
     if (key === '__typename' || key === 'page_info') continue;
-    if (REPLY_BRANCH_KEYS.has(key)) continue;
-    walkForNetworkComments(value[key], depth + 1, key);
+    walkForNetworkComments(
+      value[key],
+      depth + 1,
+      key,
+      inReplyBranch || REPLY_BRANCH_KEYS.has(key),
+    );
   }
 }
 
@@ -701,13 +692,13 @@ function scoreCommentContainer(container) {
   return score;
 }
 
-function findCommentSection(root = getScrapeRoot()) {
+function findCommentSection(root = getCommentsPanelRoot()) {
   let bestContainer = null;
   let bestScore = 0;
 
   for (const container of root.querySelectorAll('ul, [role="list"]')) {
     const directItems = container.querySelectorAll(':scope > li, :scope > [role="listitem"]');
-    const score = scoreCommentContainer(container) + directItems.length * 3;
+    const score = scoreCommentContainer(container) + directItems.length * 12;
     if (score > bestScore) {
       bestScore = score;
       bestContainer = container;
@@ -717,20 +708,43 @@ function findCommentSection(root = getScrapeRoot()) {
   return bestContainer;
 }
 
+function findBestScrollContainer(root) {
+  if (!(root instanceof Element)) return null;
+
+  let best = null;
+  let bestRoom = 0;
+
+  for (const el of root.querySelectorAll('div, section, ul, main, article')) {
+    const style = window.getComputedStyle(el);
+    if (!['auto', 'scroll', 'overlay'].includes(style.overflowY)) continue;
+    const room = el.scrollHeight - el.clientHeight;
+    if (room > 80 && room > bestRoom) {
+      bestRoom = room;
+      best = el;
+    }
+  }
+
+  return best;
+}
+
 function refreshCommentTargets() {
   const previousUl = commentUl;
-  const dialog = document.querySelector('div[role="dialog"]');
-  const nextUl = dialog ? findCommentSection(dialog) : findCommentSection();
+  const panelRoot = getCommentsPanelRoot();
+  const dialog = document.querySelector('div[role="dialog"], [aria-modal="true"]');
+  const nextUl = dialog ? findCommentSection(dialog) : findCommentSection(panelRoot);
 
   if (nextUl) {
     commentUl = nextUl;
   } else if (!commentUl?.isConnected) {
-    commentUl = findCommentSection();
+    commentUl = findCommentSection(panelRoot);
   }
 
+  const scrollRoot = dialog || panelRoot;
   scrollContainer = commentUl
     ? findScrollContainer(commentUl) || findScrollContainer(commentUl.parentElement)
     : null;
+  scrollContainer = findBestScrollContainer(scrollRoot) || scrollContainer;
+
   loadMoreRoot = dialog
     || commentUl?.closest('article')
     || document.querySelector('main')
@@ -850,7 +864,7 @@ function notifyPopup(force = false) {
   } else if (shouldAutoFinish() && getFinalizedCommentCount() > 0) {
     phase = 'ready';
   } else if (getFinalizedCommentCount() > 0 && unchangedStepCount >= STALL_STEP_THRESHOLD) {
-    phase = 'stalled';
+    phase = getTargetCommentTotal() > getFinalizedCommentCount() + 3 ? 'recovering' : 'stalled';
   } else if (getFinalizedCommentCount() > 0) {
     phase = 'scraping';
   }
@@ -894,28 +908,36 @@ function findScrollContainersInRoot(root) {
 }
 
 function scrollCommentArea() {
-  const root = getScrapeRoot();
+  const root = getCommentsPanelRoot();
   const targets = [];
 
   if (scrollContainer?.isConnected) targets.push(scrollContainer);
+  const best = findBestScrollContainer(root);
+  if (best && !targets.includes(best)) targets.push(best);
   for (const container of findScrollContainersInRoot(root)) {
     if (!targets.includes(container)) targets.push(container);
   }
 
-  if (targets.length === 0 && commentUl) {
-    commentUl.lastElementChild?.scrollIntoView({ block: 'end', behavior: 'instant' });
-    return;
+  if (commentUl?.lastElementChild) {
+    commentUl.lastElementChild.scrollIntoView({ block: 'end', behavior: 'instant' });
   }
 
-  for (const container of targets.slice(0, 4)) {
-    container.scrollTop += Math.max(450, container.clientHeight * 0.9);
-    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) {
+  if (targets.length === 0) return;
+
+  for (const container of targets.slice(0, 5)) {
+    container.scrollTop += Math.max(500, container.clientHeight * 0.95);
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 8) {
       container.scrollTop = container.scrollHeight;
     }
     container.dispatchEvent(new WheelEvent('wheel', {
-      deltaY: 900,
+      deltaY: 1200,
       bubbles: true,
       cancelable: true,
+    }));
+    container.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'End',
+      code: 'End',
+      bubbles: true,
     }));
   }
 }
@@ -1091,6 +1113,53 @@ function clickTrackedTarget(el, key) {
   return true;
 }
 
+function getCompactElementText(el) {
+  if (!(el instanceof Element)) return '';
+  return (el.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function clickViewAllCommentsByCount() {
+  const target = getTargetCommentTotal();
+  const roots = [
+    document.querySelector('main'),
+    document.querySelector('article'),
+    document,
+  ].filter(Boolean);
+  const seen = new Set();
+
+  for (const root of roots) {
+    for (const el of root.querySelectorAll('a, button, span, div, [role="button"], [role="link"], [tabindex="0"]')) {
+      if (!(el instanceof Element) || seen.has(el)) continue;
+      seen.add(el);
+
+      const text = getCompactElementText(el);
+      if (!text || text.length > 180) continue;
+
+      const hasCount = target > 0
+        ? new RegExp(`\\b${target}\\b`).test(text)
+        : /\d[\d.,\s]*\s*(?:yorum|comments?)/iu.test(text);
+      if (!hasCount || !/yorum|comment/i.test(text)) continue;
+
+      const isViewAll = /tüm|all|view|see|gör|more|yükle/i.test(text)
+        || /^\d[\d.,\s]*\s+(?:yorum|comments?)\b/i.test(text);
+      if (!isViewAll) continue;
+
+      const clickable = findClickableAncestor(el) || el;
+      if (clickTrackedTarget(clickable, `view-all-count:${target}:${text.slice(0, 48)}`)) return true;
+    }
+  }
+
+  return false;
+}
+
+function forceOpenFullCommentsPanel(force = false) {
+  if (force) clearOpenCommentsClickCache();
+  if (clickViewAllCommentsByCount()) return true;
+  if (clickExpandCommentsLinks(force)) return true;
+  if (clickOpenCommentsPanel()) return true;
+  return clickPostMetricsCommentControl();
+}
+
 function clickExpandCommentsLinks(force = false) {
   const root = document.querySelector('main') || document;
   const matcher = (label) => (
@@ -1110,12 +1179,12 @@ function clickExpandCommentsLinks(force = false) {
   if (clickByVisibleText(root, matcher, 'expand-text')) return true;
 
   for (const el of root.querySelectorAll('span, div, a, button, [role="button"], [tabindex="0"]')) {
-    const text = getElementClickText(el).toLowerCase();
-    if (!text || !matcher(text)) continue;
+    const text = getCompactElementText(el).toLowerCase();
+    if (!text || text.length > 180 || !matcher(text)) continue;
     if (hasBlockedAria(el)) continue;
 
     const clickable = findClickableAncestor(el) || el;
-    if (clickTrackedTarget(clickable, `expand:${text}`)) return true;
+    if (clickTrackedTarget(clickable, `expand:${text.slice(0, 48)}`)) return true;
   }
 
   return false;
@@ -1210,19 +1279,19 @@ function autoScrollStep() {
   const countBefore = getFinalizedCommentCount();
   const stalled = unchangedStepCount >= 2;
   const needMore = hasMoreCommentsExpected();
+  const forcePanel = needMore && countBefore <= 20;
 
-  if (needMore && countBefore <= 20 && (stalled || scrollStepCount % OPEN_RETRY_STEP_INTERVAL === 0)) {
+  if (forcePanel && (stalled || scrollStepCount === 1 || scrollStepCount % OPEN_RETRY_STEP_INTERVAL === 0)) {
     clearOpenCommentsClickCache();
-    clickExpandCommentsLinks(true);
-  }
-
-  if (
+    if (stalled) clearLoadMoreClickCache(false);
+    forceOpenFullCommentsPanel(true);
+    refreshCommentTargets();
+  } else if (
     scrollStepCount === 1
     || scrollStepCount % OPEN_RETRY_STEP_INTERVAL === 0
     || (stalled && needMore)
   ) {
-    clickExpandCommentsLinks(stalled && needMore);
-    clickOpenCommentsPanel();
+    forceOpenFullCommentsPanel(stalled && needMore);
     refreshCommentTargets();
   }
 
@@ -1230,9 +1299,9 @@ function autoScrollStep() {
     scrollStepCount === 1
     || stalled
     || needMore
-    || (scrollStepCount % 4 === 0 && getFinalizedCommentCount() === lastCountAtClick)
+    || (scrollStepCount % 3 === 0 && getFinalizedCommentCount() === lastCountAtClick)
   ) {
-    clickLoadMoreButtons(stalled && needMore);
+    clickLoadMoreButtons(stalled || needMore);
     lastCountAtClick = getFinalizedCommentCount();
   }
 
@@ -1274,7 +1343,7 @@ function startObserver() {
   stopObserver();
   if (!commentUl) return;
 
-  const observeTarget = commentUl.closest('div[role="dialog"]') || commentUl;
+  const observeTarget = commentUl.closest('div[role="dialog"], [aria-modal="true"]') || commentUl;
   observer = new MutationObserver(() => {
     scheduleObserverScrape();
   });
@@ -1374,8 +1443,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     resetState();
     detectExpectedCommentTotal();
     refreshCommentTargets();
-    clickExpandCommentsLinks(true);
-    clickOpenCommentsPanel();
+    forceOpenFullCommentsPanel(true);
     clickLoadMoreButtons(true);
     scrapeVisibleComments(true);
     detectExpectedCommentTotal();
