@@ -41,7 +41,7 @@ export async function generateSetupStory(state) {
 
   const { canvas, ctx, p } = initStoryCanvas(storyBackgroundId, 80, 1780);
 
-  const PRIZE_IMAGE_SIZE = 234;
+  const PRIZE_IMAGE_SIZE = 156;
   const PRIZE_CARD_X = 130;
   const PRIZE_CARD_W = 820;
   const PRIZE_IMAGE_X = 150;
