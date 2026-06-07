@@ -7,6 +7,7 @@ import {
   drawStoryBrandHeader,
   STORY_WIDTH,
 } from './storyCanvas';
+import { formatScheduleDateTime } from './raffleSchedule';
 
 function drawBadge(ctx, text, centerY) {
   ctx.font = 'bold 52px Outfit';
@@ -156,6 +157,14 @@ export async function generateStartingStory(state, stats = {}) {
   ctx.fillStyle = p.textMuted;
   ctx.font = '500 28px Inter';
   ctx.fillText('Bol şans! Kazananlar birazdan açıklanacak.', STORY_WIDTH / 2, y);
+
+  const drawLabel = formatScheduleDateTime(brand?.drawDate, brand?.drawTime);
+  if (drawLabel) {
+    y += 44;
+    ctx.fillStyle = p.textSoft;
+    ctx.font = '600 24px Inter';
+    ctx.fillText(`Çekiliş: ${drawLabel}`, STORY_WIDTH / 2, y);
+  }
 
   if (brand?.postUrl?.trim()) {
     y += 44;

@@ -1,4 +1,5 @@
 import { parseParticipationCriteria } from './participationCriteria';
+import { normalizeBrand, pickBrandForStorage } from './raffleSchedule';
 
 const REGISTRY_KEY = 'raffle_registry_v1';
 const LEGACY_SETUP_KEY = 'raffle_setup_state';
@@ -297,11 +298,7 @@ function toLightweightState(state) {
   return {
     rawText: state.rawText,
     comments: state.comments,
-    brand: {
-      name: state.brand?.name || '',
-      raffleName: state.brand?.raffleName || '',
-      postUrl: state.brand?.postUrl || '',
-    },
+    brand: pickBrandForStorage(state.brand),
     prizes: (state.prizes || []).map(({ id, name, winnerCount, substituteCount }) => ({
       id,
       name,
@@ -364,9 +361,7 @@ export async function loadSetupState(raffleId) {
       trySetLocalStorage(setupStorageKey(id), JSON.stringify(toLightweightState({
         ...parsed,
         brand: {
-          name: parsed.brand?.name || '',
-          raffleName: parsed.brand?.raffleName || '',
-          postUrl: parsed.brand?.postUrl || '',
+          ...pickBrandForStorage(parsed.brand),
           logo: '',
         },
         prizes: (parsed.prizes || []).map(({ id: prizeId, name, winnerCount, substituteCount }) => ({
@@ -389,12 +384,13 @@ export async function loadSetupState(raffleId) {
 
     return {
       ...parsed,
-      brand: {
+      brand: normalizeBrand({
         name: parsed.brand?.name || '',
         raffleName: parsed.brand?.raffleName || '',
         postUrl: parsed.brand?.postUrl || '',
         logo: brandLogo,
-      },
+        ...parsed.brand,
+      }),
       prizes: prizes.length > 0
         ? prizes
         : [{ id: Date.now(), name: '', image: '', winnerCount: 1, substituteCount: 1 }],

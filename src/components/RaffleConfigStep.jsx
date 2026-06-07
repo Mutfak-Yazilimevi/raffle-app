@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Settings, Upload, ListFilter, Award, Image as ImageIcon, Trash2,
-  FileText, Download, FolderOpen, Share2, ArrowRight, Megaphone, Save,
+  FileText, Download, FolderOpen, Share2, ArrowRight, Megaphone, Save, Calendar,
 } from 'lucide-react';
 import StoryBackgroundPicker from './StoryBackgroundPicker';
 import ParticipationCriteriaSection from './ParticipationCriteriaSection';
@@ -58,6 +58,44 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
             Chrome eklentisi ve Yorumlar adımındaki &quot;Instagram&apos;ı Aç&quot; butonu bu adrese gider.
           </span>
         </div>
+
+        <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--glass-border)' }}>
+          <h4 style={{ fontFamily: 'var(--font-title)', fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 14px' }}>
+            <Calendar className="gradient-text" size={18} /> Çekiliş Takvimi
+          </h4>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 16px', lineHeight: 1.5 }}>
+            Katılım dönemi ve çekiliş tarihi ön duyuru story&apos;sinde ve ilan sayfasında gösterilir.
+          </p>
+
+          {[
+            { label: 'Katılım başlangıcı', dateKey: 'entryStartDate', timeKey: 'entryStartTime' },
+            { label: 'Katılım bitişi', dateKey: 'entryEndDate', timeKey: 'entryEndTime' },
+            { label: 'Çekiliş tarihi ve saati', dateKey: 'drawDate', timeKey: 'drawTime' },
+          ].map(({ label, dateKey, timeKey }) => (
+            <div key={dateKey} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+              <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
+                <label className="form-label" style={{ fontSize: '12px' }}>{label}</label>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={brand[dateKey] || ''}
+                  onChange={(e) => setBrand({ ...brand, [dateKey]: e.target.value })}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <input
+                  type="time"
+                  className="form-input"
+                  value={brand[timeKey] || ''}
+                  onChange={(e) => setBrand({ ...brand, [timeKey]: e.target.value })}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           <div className="form-group">
             <label className="form-label">Marka Adı</label>

@@ -9,6 +9,7 @@ import {
   STORY_WIDTH,
 } from './storyCanvas';
 import { getRulesSummaryLines } from './raffleConfigFile';
+import { getScheduleSummaryLines, hasScheduleInfo } from './raffleSchedule';
 
 export async function generateSetupStory(state) {
   const { brand, prizes, storyBackgroundId, ...ruleFields } = state;
@@ -61,6 +62,31 @@ export async function generateSetupStory(state) {
   ctx.fillStyle = p.textMuted;
   ctx.fillText('Katılım şartları ve ödüller aşağıdadır', STORY_WIDTH / 2, y + 8);
   y += 48;
+
+  if (hasScheduleInfo(brand)) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = p.textPrimary;
+    ctx.font = 'bold 36px Outfit';
+    ctx.fillText('📅 TAKVİM', STORY_WIDTH / 2, y);
+    y += 42;
+
+    const scheduleLines = getScheduleSummaryLines(brand);
+    ctx.textAlign = 'left';
+    ctx.font = '500 26px Inter';
+
+    for (const line of scheduleLines) {
+      ctx.fillStyle = p.cardFillLight;
+      ctx.beginPath();
+      drawRoundRect(ctx, 150, y - 28, 780, 52, 14);
+      ctx.fill();
+
+      ctx.fillStyle = p.textSecondary;
+      ctx.fillText(`• ${line}`, 180, y + 2);
+      y += 62;
+    }
+
+    y += 12;
+  }
 
   ctx.strokeStyle = p.divider;
   ctx.beginPath();

@@ -25,7 +25,9 @@ import {
 import { normalizeImportedComments, getUniqueParticipantUsernames } from '../utils/commentParsing';
 import { resizeImageFromFile } from '../utils/resizeUploadedImage';
 
-const EMPTY_BRAND = { name: '', logo: '', raffleName: '', postUrl: '' };
+import { normalizeBrand, EMPTY_BRAND_SCHEDULE } from '../utils/raffleSchedule';
+
+const EMPTY_BRAND = { name: '', logo: '', raffleName: '', postUrl: '', ...EMPTY_BRAND_SCHEDULE };
 const EMPTY_PRIZE = () => ({ id: Date.now(), name: '', image: '', winnerCount: 1, substituteCount: 1 });
 
 export function useRaffleForm({ importedComments, onClearImported, activeRaffleId }) {
@@ -159,7 +161,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
       })
     );
 
-    setBrand({ ...config.brand, logo });
+    setBrand(normalizeBrand({ ...config.brand, logo }));
     setPrizes(importedPrizes);
     setEntryMethod(config.entryMethod);
     setMinMentions(config.minMentions);
@@ -184,7 +186,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
   const applySavedState = (saved) => {
     if (saved.comments) setComments(saved.comments);
     else setComments([]);
-    if (saved.brand) setBrand(saved.brand);
+    if (saved.brand) setBrand(normalizeBrand(saved.brand));
     if (saved.prizes) setPrizes(saved.prizes);
     if (saved.entryMethod) setEntryMethod(saved.entryMethod);
     if (saved.minMentions != null) setMinMentions(saved.minMentions);

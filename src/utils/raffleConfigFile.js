@@ -1,5 +1,6 @@
 import { getFollowRuleSummary } from './followRules';
 import { getParticipationCriteriaSummaryLines, parseParticipationCriteria } from './participationCriteria';
+import { normalizeBrand } from './raffleSchedule';
 import { APP_DISPLAY_NAME } from './appBranding';
 
 const FILE_HEADER = `# ${APP_DISPLAY_NAME} Çekiliş Ayar Dosyası v1`;
@@ -9,12 +10,13 @@ export function buildConfigSnapshot(state) {
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
-    brand: {
+    brand: normalizeBrand({
       name: state.brand?.name || '',
       logo: state.brand?.logo || '',
       raffleName: state.brand?.raffleName || '',
       postUrl: state.brand?.postUrl || '',
-    },
+      ...state.brand,
+    }),
     prizes: (state.prizes || []).map((prize, index) => ({
       id: prize.id || Date.now() + index,
       name: prize.name || '',
@@ -56,12 +58,13 @@ export function parseConfigFromTxt(text) {
   }
 
   return {
-    brand: {
+    brand: normalizeBrand({
       name: parsed.brand?.name || '',
       logo: parsed.brand?.logo || '',
       raffleName: parsed.brand?.raffleName || '',
       postUrl: parsed.brand?.postUrl || '',
-    },
+      ...parsed.brand,
+    }),
     prizes: Array.isArray(parsed.prizes) && parsed.prizes.length > 0
       ? parsed.prizes.map((prize, index) => ({
           id: prize.id || Date.now() + index,

@@ -5,6 +5,7 @@ import {
 import { resolveInstagramUrl } from '../config';
 import { getRulesSummaryLines } from '../utils/raffleConfigFile';
 import { parseParticipationCriteria } from '../utils/participationCriteria';
+import { getScheduleSummaryLines, hasScheduleInfo } from '../utils/raffleSchedule';
 
 export default function RaffleAnnouncementDetail({
   bundle,
@@ -31,6 +32,7 @@ export default function RaffleAnnouncementDetail({
     ...parseParticipationCriteria(setup),
   };
   const ruleLines = getRulesSummaryLines(rules);
+  const scheduleLines = getScheduleSummaryLines(brand);
   const instagramUrl = resolveInstagramUrl(brand.postUrl);
   const title = brand.raffleName || 'Çekiliş Duyurusu';
   const winners = drawResults?.winners || [];
@@ -71,6 +73,17 @@ export default function RaffleAnnouncementDetail({
           </div>
         )}
       </div>
+
+      {hasScheduleInfo(brand) && (
+        <div className="glass-container" style={{ padding: '24px', marginBottom: '24px' }}>
+          <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '16px', fontWeight: 700, marginBottom: '14px' }}>Çekiliş Takvimi</h2>
+          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', lineHeight: 1.9, color: 'var(--text-main)' }}>
+            {scheduleLines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {prizes.some((p) => p.name || p.image) && (
         <div style={{ marginBottom: '24px' }}>
