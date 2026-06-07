@@ -3,23 +3,31 @@
   if (window.__raffleIgNetworkHook) return;
   window.__raffleIgNetworkHook = true;
 
-  function shouldCapture(url, method) {
+  const COMMENT_HINT = /comment|xdt_api|edge_media_to_comment|threaded/i;
+
+  function getRequestBody(args) {
+    const init = typeof args[0] === 'object' && args[0] !== null && !(args[0] instanceof Request)
+      ? args[0]
+      : args[1];
+    const body = init?.body;
+    return typeof body === 'string' ? body : '';
+  }
+
+  function shouldCapture(url, method, requestBody) {
     if (!url || typeof url !== 'string') return false;
     const lower = url.toLowerCase();
     if (!lower.includes('instagram.com') && !lower.includes('facebook.com')) return false;
-    if (lower.includes('comment') || lower.includes('graphql') || lower.includes('/api/')) {
-      return true;
-    }
-    if ((method || 'GET').toUpperCase() === 'POST' && lower.includes('instagram.com')) {
-      return true;
-    }
+    if (lower.includes('comment')) return true;
+    if (requestBody && COMMENT_HINT.test(requestBody)) return true;
+    if (lower.includes('graphql') || lower.includes('/api/')) return true;
     return false;
   }
 
-  function publish(body, url) {
+  function publish(body) {
     if (!body || body.length < 40) return;
-    if (!/comment|"text"|edges|xdt_api/i.test(body)) return;
-    window.postMessage({ type: 'RAFFLE_IG_NETWORK', body, url: url || '' }, '*');
+    if (!COMMENT_HINT.test(body) && !/"text"\s*:\s*"/.test(body)) return;
+    if (!/"edges"|"username"|"owner"|comment_count/i.test(body)) return;
+    window.postMessage({ type: 'RAFFLE_IG_NETWORK', body }, '*');
   }
 
   const originalFetch = window.fetch;
@@ -29,8 +37,9 @@
       try {
         const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
         const method = typeof args[0] === 'object' && args[0]?.method ? args[0].method : 'GET';
-        if (!shouldCapture(url, method)) return;
-        response.clone().text().then((body) => publish(body, url)).catch(function () {});
+        const requestBody = getRequestBody(args);
+        if (!shouldCapture(url, method, requestBody)) return;
+        response.clone().text().then((body) => publish(body)).catch(function () {});
       } catch (_) {}
     }).catch(function () {});
     return responsePromise;
@@ -44,11 +53,13 @@
     return originalOpen.call(this, method, url, ...rest);
   };
   XMLHttpRequest.prototype.send = function raffleSend(...args) {
+    const requestBody = typeof args[0] === 'string' ? args[0] : '';
+    this.__raffleRequestBody = requestBody;
     this.addEventListener('load', function () {
       try {
         const url = this.__raffleUrl || '';
-        if (shouldCapture(url, this.__raffleMethod)) {
-          publish(this.responseText || '', url);
+        if (shouldCapture(url, this.__raffleMethod, this.__raffleRequestBody || '')) {
+          publish(this.responseText || '');
         }
       } catch (_) {}
     });
