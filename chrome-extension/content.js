@@ -92,10 +92,26 @@ let unchangedStepCount = 0;
 let expectedCommentTotal = 0;
 let pinnedExpectedTotal = 0;
 let lastNetworkIngestCount = 0;
+let commentPaginationState = {
+  endCursor: null,
+  hasNextPage: false,
+  fetchedCursors: new Set(),
+  pendingFetch: false,
+  lastFetchAt: 0,
+};
 
 window.addEventListener('message', (event) => {
-  if (event.source !== window || event.data?.type !== 'RAFFLE_IG_NETWORK') return;
-  ingestCommentsFromNetworkPayload(event.data.body);
+  if (event.source !== window) return;
+
+  if (event.data?.type === 'RAFFLE_IG_NETWORK') {
+    ingestCommentsFromNetworkPayload(event.data.body);
+    updateCommentPaginationFromPayload(event.data.body);
+    return;
+  }
+
+  if (event.data?.type === 'RAFFLE_FETCH_COMMENT_PAGE_DONE') {
+    commentPaginationState.pendingFetch = false;
+  }
 });
 
 function parseCountToken(raw) {
@@ -436,6 +452,66 @@ function ingestCommentsFromNetworkPayload(payload) {
     unchangedStepCount = 0;
     notifyPopup();
   }
+}
+
+function updateCommentPaginationFromPayload(payload) {
+  if (!payload) return;
+
+  try {
+    const info = extractCommentPaginationInfo(JSON.parse(payload));
+    if (info.endCursor) {
+      commentPaginationState.endCursor = info.endCursor;
+      commentPaginationState.hasNextPage = info.hasNextPage;
+    }
+  } catch (_) {
+    /* ignore invalid JSON */
+  }
+}
+
+function extractCommentPaginationInfo(value, depth = 0, result = { endCursor: null, hasNextPage: false }) {
+  if (!value || depth > 24) return result;
+
+  if (Array.isArray(value)) {
+    for (const item of value) extractCommentPaginationInfo(item, depth + 1, result);
+    return result;
+  }
+
+  if (typeof value !== 'object') return result;
+
+  if (value.page_info && typeof value.page_info === 'object') {
+    const pageInfo = value.page_info;
+    if (pageInfo.end_cursor) {
+      result.endCursor = pageInfo.end_cursor;
+      result.hasNextPage = pageInfo.has_next_page !== false;
+    }
+  }
+
+  for (const key of Object.keys(value)) {
+    if (REPLY_BRANCH_KEYS.has(key)) continue;
+    extractCommentPaginationInfo(value[key], depth + 1, result);
+  }
+
+  return result;
+}
+
+function requestNextCommentPageIfNeeded(force = false) {
+  const target = getTargetCommentTotal();
+  const collected = getFinalizedCommentCount();
+
+  if (target > 0 && collected + 2 >= target) return false;
+  if (!commentPaginationState.hasNextPage || !commentPaginationState.endCursor) return false;
+  if (commentPaginationState.pendingFetch) return false;
+
+  const cursor = commentPaginationState.endCursor;
+  if (!force && commentPaginationState.fetchedCursors.has(cursor)) return false;
+  if (Date.now() - commentPaginationState.lastFetchAt < 350) return false;
+
+  commentPaginationState.pendingFetch = true;
+  commentPaginationState.lastFetchAt = Date.now();
+  commentPaginationState.fetchedCursors.add(cursor);
+
+  window.postMessage({ type: 'RAFFLE_FETCH_COMMENT_PAGE', cursor }, '*');
+  return true;
 }
 
 function isReplyCommentNode(node) {
@@ -849,6 +925,13 @@ function scrapeVisibleComments(forceFull = false) {
   }
 
   scrapeEmbeddedPageData();
+
+  const dialog = document.querySelector('div[role="dialog"], [aria-modal="true"]');
+  const main = document.querySelector('main');
+  scrapeCommentsByHeuristic(root);
+  if (dialog && dialog !== root) scrapeCommentsByHeuristic(dialog);
+  if (main && main !== root && main !== dialog) scrapeCommentsByHeuristic(main);
+
   lastParsedLiCount = maxItems;
   return getFinalizedCommentCount();
 }
@@ -948,6 +1031,9 @@ function clearOpenCommentsClickCache() {
       key.startsWith('open')
       || key.startsWith('expand')
       || key.startsWith('metrics-comment')
+      || key.startsWith('preview-expand')
+      || key.startsWith('view-all-count')
+      || key.startsWith('post-comment-btn')
     ) {
       clickedLoadMoreKeys.delete(key);
     }
@@ -1118,6 +1204,59 @@ function getCompactElementText(el) {
   return (el.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
+function getElementContextText(el, depth = 2) {
+  if (!(el instanceof Element)) return '';
+  let node = el;
+  for (let i = 0; i <= depth && node; i += 1) {
+    const text = getCompactElementText(node);
+    if (text && text.length <= 180) return text;
+    node = node.parentElement;
+  }
+  return getCompactElementText(el);
+}
+
+function clickViewAllNearPreviewList() {
+  const article = document.querySelector('article') || document.querySelector('main');
+  if (!article) return false;
+
+  for (const list of article.querySelectorAll('ul, [role="list"]')) {
+    const items = list.querySelectorAll(':scope > li, :scope > [role="listitem"]');
+    if (items.length < 3 || items.length > 25) continue;
+
+    let node = list;
+    for (let depth = 0; depth < 5 && node; depth += 1) {
+      for (const el of node.querySelectorAll('button, a, span, div, [role="button"], [role="link"], [tabindex="0"]')) {
+        const text = getElementContextText(el, 1);
+        if (!text || text.length > 180) continue;
+        if (!/yorum|comment/i.test(text)) continue;
+        if (!/tüm|all|view|see|gör|more/i.test(text)) continue;
+
+        const clickable = findClickableAncestor(el) || el;
+        if (clickTrackedTarget(clickable, `preview-expand:${text.slice(0, 48)}`)) return true;
+      }
+      node = node.parentElement;
+    }
+  }
+
+  return false;
+}
+
+function clickPostCommentButton() {
+  const main = document.querySelector('main');
+  if (!main) return false;
+
+  for (const svg of main.querySelectorAll('svg[aria-label]')) {
+    const label = (svg.getAttribute('aria-label') || '').trim().toLowerCase();
+    if (!/(^comment$|^comments$|^yorum$|^yorumlar$|comment on|yorum yap)/i.test(label)) continue;
+    if (/(add|write|ekle|yaz)/i.test(label)) continue;
+
+    const btn = svg.closest('button, [role="button"], a, div[tabindex="0"]');
+    if (btn && clickTrackedTarget(btn, `post-comment-btn:${label}`)) return true;
+  }
+
+  return false;
+}
+
 function clickViewAllCommentsByCount() {
   const target = getTargetCommentTotal();
   const roots = [
@@ -1132,7 +1271,7 @@ function clickViewAllCommentsByCount() {
       if (!(el instanceof Element) || seen.has(el)) continue;
       seen.add(el);
 
-      const text = getCompactElementText(el);
+      const text = getElementContextText(el, 2);
       if (!text || text.length > 180) continue;
 
       const hasCount = target > 0
@@ -1154,7 +1293,9 @@ function clickViewAllCommentsByCount() {
 
 function forceOpenFullCommentsPanel(force = false) {
   if (force) clearOpenCommentsClickCache();
+  if (clickViewAllNearPreviewList()) return true;
   if (clickViewAllCommentsByCount()) return true;
+  if (clickPostCommentButton()) return true;
   if (clickExpandCommentsLinks(force)) return true;
   if (clickOpenCommentsPanel()) return true;
   return clickPostMetricsCommentControl();
@@ -1308,6 +1449,7 @@ function autoScrollStep() {
   if (!commentUl || !commentUl.isConnected) refreshCommentTargets();
   ensureObserver();
   scrollCommentArea();
+  requestNextCommentPageIfNeeded(stalled || needMore);
 
   const networkBefore = getFinalizedCommentCount();
   scrapeEmbeddedPageData();
@@ -1408,6 +1550,13 @@ function resetState() {
   expectedCommentTotal = 0;
   pinnedExpectedTotal = 0;
   lastNetworkIngestCount = 0;
+  commentPaginationState = {
+    endCursor: null,
+    hasNextPage: false,
+    fetchedCursors: new Set(),
+    pendingFetch: false,
+    lastFetchAt: 0,
+  };
   clickedLoadMoreKeys = new Set();
 }
 

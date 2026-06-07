@@ -333,7 +333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const totalHint = expectedTotal > count ? ` / ${expectedTotal}` : '';
       if (phase === 'stalled' || phase === 'recovering') {
         scrollStatusEl.textContent = phase === 'recovering'
-          ? `${count}${totalHint} yorum · tam panel açılıyor / kaydırılıyor…`
+          ? `${count}${totalHint} yorum · API ile yükleniyor / panel açılıyor…`
           : `${count}${totalHint} yorum · daha fazlası yükleniyor…`;
       } else if (isScraping) {
         scrollStatusEl.textContent = `${count}${totalHint} yorum · tarama sürüyor…`;
