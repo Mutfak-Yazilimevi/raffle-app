@@ -349,7 +349,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (message.type === 'FOLLOW_VERIFY_PROGRESS' && followVerifyStatus) {
-      followVerifyStatus.textContent = `${message.current}/${message.total} · @${message.participant}`;
+      if (message.mode === 'bulk') {
+        followVerifyStatus.textContent = `@${message.account} takipçileri · ${message.found}/${message.total} katılımcı eşleşti`;
+      } else {
+        followVerifyStatus.textContent = `${message.current}/${message.total} · @${message.participant}`;
+      }
     }
 
     if (message.type === 'FOLLOW_VERIFY_DONE' && followVerifyStatus) {

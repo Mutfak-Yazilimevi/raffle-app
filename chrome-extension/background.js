@@ -1,14 +1,29 @@
 // Instagram takip doğrulama orkestrasyonu
 
 const VERIFY_STORAGE_KEY = 'raffle_follow_verify_progress';
-const PROFILE_READY_TIMEOUT_MS = 9000;
-const BETWEEN_PARTICIPANTS_MS = 350;
+const PROFILE_READY_TIMEOUT_MS = 4500;
+const TAB_LOAD_TIMEOUT_MS = 18000;
+const VERIFY_CONCURRENCY = 2;
+const BULK_ACCOUNT_CONCURRENCY = 3;
+const BULK_VERIFY_THRESHOLD = 60;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function waitForTabComplete(tabId, timeoutMs = 35000) {
+function normalizeParticipants(participants) {
+  return Array.from(new Set(
+    (participants || []).map((p) => String(p).replace(/^@+/, '').toLowerCase()).filter(Boolean),
+  ));
+}
+
+function normalizeAccounts(accounts) {
+  return Array.from(new Set(
+    (accounts || []).map((a) => String(a).replace(/^@+/, '').toLowerCase()).filter(Boolean),
+  ));
+}
+
+function waitForTabComplete(tabId, timeoutMs = TAB_LOAD_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     let settled = false;
 
@@ -20,11 +35,9 @@ function waitForTabComplete(tabId, timeoutMs = 35000) {
       fn(value);
     }
 
-    function onUpdated(updatedTabId, info, tab) {
+    function onUpdated(updatedTabId, info) {
       if (updatedTabId !== tabId) return;
-      if (info.status === 'complete') {
-        finish(resolve, tab);
-      }
+      if (info.status === 'complete') finish(resolve, true);
     }
 
     const timeoutId = setTimeout(() => {
@@ -37,9 +50,7 @@ function waitForTabComplete(tabId, timeoutMs = 35000) {
         finish(reject, chrome.runtime.lastError);
         return;
       }
-      if (tab.status === 'complete') {
-        finish(resolve, tab);
-      }
+      if (tab.status === 'complete') finish(resolve, true);
     });
   });
 }
@@ -69,42 +80,79 @@ function sendTabMessage(tabId, message) {
 }
 
 async function waitForProfileReady(tabId, timeoutMs = PROFILE_READY_TIMEOUT_MS) {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const response = await sendTabMessage(tabId, {
-      type: 'WAIT_PROFILE_READY',
-      timeoutMs: Math.max(800, timeoutMs - (Date.now() - started)),
-    });
-    if (response?.ready) return true;
-    await sleep(180);
-  }
-  return false;
+  const response = await sendTabMessage(tabId, {
+    type: 'WAIT_PROFILE_READY',
+    timeoutMs,
+  });
+  return Boolean(response?.ready);
+}
+
+async function createVerifyTab() {
+  const created = await chrome.tabs.create({ url: 'https://www.instagram.com/', active: false });
+  await waitForTabComplete(created.id).catch(() => {});
+  await sleep(120);
+  return created.id;
+}
+
+function saveProgress(progress) {
+  chrome.storage.local.set({ [VERIFY_STORAGE_KEY]: progress });
+  chrome.runtime.sendMessage({ type: 'FOLLOW_VERIFY_PROGRESS', ...progress }).catch(() => {});
 }
 
 async function verifyParticipantOnTab(tabId, participant, requiredAccounts, minRequired) {
-  const url = `https://www.instagram.com/${encodeURIComponent(participant)}/`;
-  await chrome.tabs.update(tabId, { url });
-  await waitForTabComplete(tabId);
+  const encoded = encodeURIComponent(participant);
+
+  await chrome.tabs.update(tabId, { url: `https://www.instagram.com/${encoded}/` });
+  await waitForTabComplete(tabId).catch(() => {});
   await ensureContentScripts(tabId);
   await waitForProfileReady(tabId);
 
-  const response = await sendTabMessage(tabId, {
+  const profileResult = await sendTabMessage(tabId, {
     type: 'VERIFY_PARTICIPANT_FOLLOWS',
+    phase: 'profile',
     requiredFollowAccounts: requiredAccounts,
     minRequiredFollows: minRequired,
   });
 
-  if (!response) {
-    return {
-      ok: false,
-      error: 'verify_message_failed',
-      followed: [],
-      missing: requiredAccounts,
-      meetsRequirement: false,
-    };
-  }
+  if (profileResult?.meetsRequirement) return profileResult;
 
-  return response;
+  await chrome.tabs.update(tabId, { url: `https://www.instagram.com/${encoded}/following/` });
+  await waitForTabComplete(tabId).catch(() => {});
+  await ensureContentScripts(tabId);
+
+  const listResult = await sendTabMessage(tabId, {
+    type: 'VERIFY_PARTICIPANT_FOLLOWS',
+    phase: 'following',
+    priorFollowed: profileResult?.followed || [],
+    requiredFollowAccounts: requiredAccounts,
+    minRequiredFollows: minRequired,
+  });
+
+  if (listResult) return listResult;
+
+  return profileResult || {
+    ok: false,
+    error: 'verify_message_failed',
+    followed: [],
+    missing: requiredAccounts,
+    meetsRequirement: false,
+  };
+}
+
+async function scanAccountFollowersOnTab(tabId, targetAccount, participants, requestId) {
+  await chrome.tabs.update(tabId, {
+    url: `https://www.instagram.com/${encodeURIComponent(targetAccount)}/followers/`,
+  });
+  await waitForTabComplete(tabId).catch(() => {});
+  await ensureContentScripts(tabId);
+
+  return sendTabMessage(tabId, {
+    type: 'SCAN_FOLLOWERS_FOR_PARTICIPANTS',
+    targetAccount,
+    participants,
+    requestId,
+    maxRounds: Math.min(1500, Math.max(180, Math.ceil(participants.length * 0.4))),
+  });
 }
 
 async function writeResultsToAppTab(appTabId, payload) {
@@ -125,62 +173,192 @@ async function writeResultsToAppTab(appTabId, payload) {
   });
 }
 
-async function runFollowVerification({ participants, requiredFollowAccounts, minRequiredFollows, appTabId, requestId }) {
+async function runPerParticipantVerification({
+  participants,
+  requiredFollowAccounts,
+  minRequiredFollows,
+  appTabId,
+  requestId,
+}) {
   const results = {};
-  let verifyTabId = null;
+  const verifyTabIds = [];
+  let nextIndex = 0;
+  let completedCount = 0;
 
-  try {
-    const created = await chrome.tabs.create({ url: 'https://www.instagram.com/', active: false });
-    verifyTabId = created.id;
-    await waitForTabComplete(verifyTabId);
-    await sleep(600);
+  function reportProgress(participant) {
+    completedCount += 1;
+    saveProgress({
+      requestId,
+      status: 'running',
+      mode: 'profile',
+      current: completedCount,
+      total: participants.length,
+      participant,
+    });
+  }
 
-    for (let i = 0; i < participants.length; i += 1) {
-      const participant = participants[i];
-      const progress = {
-        requestId,
-        status: 'running',
-        current: i + 1,
-        total: participants.length,
-        participant,
-      };
-      await chrome.storage.local.set({ [VERIFY_STORAGE_KEY]: progress });
-      chrome.runtime.sendMessage({ type: 'FOLLOW_VERIFY_PROGRESS', ...progress }).catch(() => {});
+  async function worker(tabId) {
+    while (nextIndex < participants.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const participant = participants[index];
 
       results[participant] = await verifyParticipantOnTab(
-        verifyTabId,
+        tabId,
         participant,
         requiredFollowAccounts,
-        minRequiredFollows
+        minRequiredFollows,
       );
 
-      if (i < participants.length - 1) {
-        await sleep(BETWEEN_PARTICIPANTS_MS);
+      reportProgress(participant);
+    }
+  }
+
+  try {
+    const workerCount = Math.min(VERIFY_CONCURRENCY, participants.length);
+    for (let i = 0; i < workerCount; i += 1) {
+      verifyTabIds.push(await createVerifyTab());
+    }
+
+    await Promise.all(verifyTabIds.map((tabId) => worker(tabId)));
+
+    return results;
+  } finally {
+    for (const tabId of verifyTabIds) {
+      chrome.tabs.remove(tabId).catch(() => {});
+    }
+  }
+}
+
+async function runBulkFollowVerification({
+  participants,
+  requiredFollowAccounts,
+  minRequiredFollows,
+  requestId,
+}) {
+  const matchMap = Object.fromEntries(participants.map((p) => [p, new Set()]));
+  const verifyTabIds = [];
+
+  saveProgress({
+    requestId,
+    status: 'running',
+    mode: 'bulk',
+    current: 0,
+    total: participants.length,
+    participant: requiredFollowAccounts.join(', '),
+    message: `@${requiredFollowAccounts[0]} takipçileri taranıyor…`,
+  });
+
+  async function scanRequiredAccount(targetAccount, tabId) {
+    const stillPending = participants.filter((participant) => !matchMap[participant].has(targetAccount));
+    if (stillPending.length === 0) {
+      return { targetAccount, matched: [] };
+    }
+
+    const scanResult = await scanAccountFollowersOnTab(tabId, targetAccount, stillPending, requestId);
+    const matched = scanResult?.matched || [];
+
+    for (const participant of matched) {
+      if (matchMap[participant]) matchMap[participant].add(targetAccount);
+    }
+
+    return scanResult || { targetAccount, matched: [] };
+  }
+
+  try {
+    const workerCount = Math.min(BULK_ACCOUNT_CONCURRENCY, requiredFollowAccounts.length);
+    for (let i = 0; i < workerCount; i += 1) {
+      verifyTabIds.push(await createVerifyTab());
+    }
+
+    let accountIndex = 0;
+    async function accountWorker(tabId) {
+      while (accountIndex < requiredFollowAccounts.length) {
+        const index = accountIndex;
+        accountIndex += 1;
+        await scanRequiredAccount(requiredFollowAccounts[index], tabId);
       }
     }
 
-    const payload = {
-      requestId,
-      status: 'completed',
-      completedAt: new Date().toISOString(),
-      requiredFollowAccounts,
-      minRequiredFollows,
-      results,
-    };
+    await Promise.all(verifyTabIds.map((tabId) => accountWorker(tabId)));
 
-    if (appTabId) {
-      await writeResultsToAppTab(appTabId, payload);
+    const results = {};
+    for (const participant of participants) {
+      const followed = requiredFollowAccounts.filter((acc) => matchMap[participant].has(acc));
+      const missing = requiredFollowAccounts.filter((acc) => !matchMap[participant].has(acc));
+      results[participant] = {
+        ok: true,
+        followed,
+        missing,
+        meetsRequirement: followed.length >= minRequiredFollows,
+        checkedVia: 'bulk_followers',
+      };
     }
 
-    await chrome.storage.local.set({ [VERIFY_STORAGE_KEY]: { requestId, status: 'completed', total: participants.length } });
-    chrome.runtime.sendMessage({ type: 'FOLLOW_VERIFY_DONE', ...payload }).catch(() => {});
-
-    return payload;
+    return results;
   } finally {
-    if (verifyTabId) {
-      chrome.tabs.remove(verifyTabId).catch(() => {});
+    for (const tabId of verifyTabIds) {
+      chrome.tabs.remove(tabId).catch(() => {});
     }
   }
+}
+
+async function runFollowVerification({
+  participants,
+  requiredFollowAccounts,
+  minRequiredFollows,
+  appTabId,
+  requestId,
+}) {
+  const uniqueParticipants = normalizeParticipants(participants);
+  const requiredAccounts = normalizeAccounts(requiredFollowAccounts);
+  const minRequired = Math.max(1, Math.min(
+    parseInt(minRequiredFollows, 10) || requiredAccounts.length,
+    requiredAccounts.length,
+  ));
+
+  const useBulkMode = uniqueParticipants.length >= BULK_VERIFY_THRESHOLD;
+
+  const results = useBulkMode
+    ? await runBulkFollowVerification({
+      participants: uniqueParticipants,
+      requiredFollowAccounts: requiredAccounts,
+      minRequiredFollows: minRequired,
+      requestId,
+    })
+    : await runPerParticipantVerification({
+      participants: uniqueParticipants,
+      requiredFollowAccounts: requiredAccounts,
+      minRequiredFollows: minRequired,
+      appTabId,
+      requestId,
+    });
+
+  const payload = {
+    requestId,
+    status: 'completed',
+    mode: useBulkMode ? 'bulk' : 'profile',
+    completedAt: new Date().toISOString(),
+    requiredFollowAccounts: requiredAccounts,
+    minRequiredFollows: minRequired,
+    results,
+  };
+
+  if (appTabId) {
+    await writeResultsToAppTab(appTabId, payload);
+  }
+
+  await chrome.storage.local.set({
+    [VERIFY_STORAGE_KEY]: {
+      requestId,
+      status: 'completed',
+      mode: payload.mode,
+      total: uniqueParticipants.length,
+    },
+  });
+  chrome.runtime.sendMessage({ type: 'FOLLOW_VERIFY_DONE', ...payload }).catch(() => {});
+
+  return payload;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

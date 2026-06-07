@@ -1128,7 +1128,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         meetsRequirement: false,
       });
     } else {
-      verifyFn(request.requiredFollowAccounts, request.minRequiredFollows)
+      verifyFn(
+        request.requiredFollowAccounts,
+        request.minRequiredFollows,
+        {
+          phase: request.phase,
+          priorFollowed: request.priorFollowed,
+        },
+      )
         .then(sendResponse)
         .catch((err) => {
           sendResponse({
@@ -1137,6 +1144,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             followed: [],
             missing: request.requiredFollowAccounts || [],
             meetsRequirement: false,
+          });
+        });
+    }
+  } else if (request.type === 'SCAN_FOLLOWERS_FOR_PARTICIPANTS') {
+    const scanFn = window.__raffleFollowVerify?.scanAccountFollowersForParticipants;
+    if (!scanFn) {
+      sendResponse({
+        ok: false,
+        error: 'bulk_follow_verify_unavailable',
+        matched: [],
+      });
+    } else {
+      scanFn(
+        request.targetAccount,
+        request.participants,
+        { maxRounds: request.maxRounds },
+      )
+        .then(sendResponse)
+        .catch((err) => {
+          sendResponse({
+            ok: false,
+            error: err?.message || 'bulk_scan_failed',
+            matched: [],
           });
         });
     }

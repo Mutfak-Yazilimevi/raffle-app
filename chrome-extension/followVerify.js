@@ -19,6 +19,60 @@ const FOLLOWS_YOU_LABELS = new Set([
   'sizi takip ediyor',
 ]);
 
+const BULK_VERIFY_THRESHOLD = 60;
+
+const networkUsernames = new Set();
+
+window.addEventListener('message', (event) => {
+  if (event.source !== window || event.data?.type !== 'RAFFLE_IG_NETWORK') return;
+  ingestUsersFromNetworkPayload(event.data.body);
+});
+
+function ingestUsersFromNetworkPayload(payload) {
+  if (!payload || !/following|follower|friendship|edge_follow|username|"edges"/i.test(payload)) return;
+
+  try {
+    walkNetworkUsernames(JSON.parse(payload));
+  } catch (_) {
+    /* ignore invalid JSON */
+  }
+}
+
+function walkNetworkUsernames(value, depth = 0) {
+  if (!value || depth > 18) return;
+
+  if (Array.isArray(value)) {
+    for (const item of value) walkNetworkUsernames(item, depth + 1);
+    return;
+  }
+
+  if (typeof value !== 'object') return;
+
+  if (typeof value.username === 'string') {
+    const name = normalizeUsername(value.username);
+    if (name && !SKIP_PATHS.has(name)) networkUsernames.add(name);
+  }
+
+  if (value.user?.username) {
+    networkUsernames.add(normalizeUsername(value.user.username));
+  }
+
+  if (value.node?.username) {
+    networkUsernames.add(normalizeUsername(value.node.username));
+  }
+
+  if (Array.isArray(value.edges)) {
+    for (const edge of value.edges) {
+      walkNetworkUsernames(edge, depth + 1);
+    }
+  }
+
+  for (const key of Object.keys(value)) {
+    if (key === '__typename' || key === 'page_info') continue;
+    walkNetworkUsernames(value[key], depth + 1);
+  }
+}
+
 function extractUsernameFromHref(href) {
   const match = (href || '').match(/^\/([^/?#]+)\/?$/);
   if (!match) return null;
@@ -28,6 +82,9 @@ function extractUsernameFromHref(href) {
 }
 
 function findScrollableElement(root) {
+  let best = root;
+  let bestRoom = 0;
+
   const queue = [root];
   while (queue.length) {
     const el = queue.shift();
@@ -36,14 +93,23 @@ function findScrollableElement(root) {
     const style = window.getComputedStyle(el);
     const canScroll = style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay';
     if (canScroll && el.scrollHeight > el.clientHeight + 20) {
-      return el;
+      const room = el.scrollHeight - el.clientHeight;
+      if (room > bestRoom) {
+        bestRoom = room;
+        best = el;
+      }
     }
 
-    for (const child of el.children) {
-      queue.push(child);
-    }
+    for (const child of el.children) queue.push(child);
   }
-  return root;
+
+  return best;
+}
+
+function getListScanRoot() {
+  return document.querySelector('div[role="dialog"]')
+    || document.querySelector('main')
+    || document;
 }
 
 function collectUsernamesFromRoot(root, foundSet, requiredSet) {
@@ -56,6 +122,53 @@ function collectUsernamesFromRoot(root, foundSet, requiredSet) {
     }
   }
   return false;
+}
+
+function mergeNetworkUsernames(foundSet, requiredSet) {
+  for (const username of networkUsernames) {
+    foundSet.add(username);
+    if (requiredSet && requiredSet.size > 0 && [...requiredSet].every((acc) => foundSet.has(acc))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function collectPendingMatches(root, pending, matched) {
+  for (const link of root.querySelectorAll('a[href^="/"]')) {
+    const username = extractUsernameFromHref(link.getAttribute('href'));
+    if (!username || !pending.has(username)) continue;
+    pending.delete(username);
+    matched.add(username);
+    if (pending.size === 0) return true;
+  }
+
+  for (const username of networkUsernames) {
+    if (!pending.has(username)) continue;
+    pending.delete(username);
+    matched.add(username);
+    if (pending.size === 0) return true;
+  }
+
+  return pending.size === 0;
+}
+
+function countMatched(requiredAccounts, foundSet) {
+  return requiredAccounts.filter((acc) => foundSet.has(acc)).length;
+}
+
+function buildFollowResult(requiredAccounts, foundSet, minRequired, checkedVia, ok = true, error = null) {
+  const followed = requiredAccounts.filter((acc) => foundSet.has(acc));
+  const missing = requiredAccounts.filter((acc) => !foundSet.has(acc));
+
+  return {
+    ok,
+    error,
+    followed,
+    missing,
+    meetsRequirement: followed.length >= minRequired,
+    checkedVia,
+  };
 }
 
 function pageHasFollowsYouIndicator() {
@@ -83,137 +196,209 @@ function getLoggedInUsername() {
   return null;
 }
 
-async function waitForProfileReady(timeoutMs = 8000) {
+async function waitForProfileReady(timeoutMs = 5000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    if (document.querySelector('a[href$="/following/"]')) return true;
-    await sleep(120);
+    if (document.querySelector('a[href$="/following/"], a[href$="/followers/"]')) return true;
+    await sleep(40);
   }
   return false;
 }
 
-async function openFollowingDialog() {
-  const link = document.querySelector('a[href$="/following/"]');
-  if (!link) return null;
-
-  try {
-    link.click();
-  } catch (_) {
-    return null;
+async function waitForListPageReady(timeoutMs = 4500) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const root = getListScanRoot();
+    if (root.querySelectorAll('a[href^="/"]').length >= 4) return true;
+    await sleep(40);
   }
-
-  for (let i = 0; i < 16; i += 1) {
-    await sleep(150);
-    const dialog = document.querySelector('div[role="dialog"]');
-    if (dialog) return dialog;
-  }
-  return null;
+  return false;
 }
 
 function closeTopDialog() {
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 }
 
-async function scanFollowingDialog(requiredAccounts, minRequired) {
-  const dialog = await openFollowingDialog();
-  if (!dialog) {
-    return { ok: false, error: 'following_dialog_not_found', followed: [], missing: requiredAccounts };
+function reportBulkScanProgress(targetAccount, matchedCount, totalCount, pendingCount) {
+  chrome.runtime.sendMessage({
+    type: 'FOLLOW_VERIFY_PROGRESS',
+    mode: 'bulk',
+    account: targetAccount,
+    found: matchedCount,
+    total: totalCount,
+    pending: pendingCount,
+    current: matchedCount,
+    participant: `@${targetAccount}`,
+  }).catch(() => {});
+}
+
+async function scanAccountFollowersForParticipants(targetAccountInput, participantsInput, options = {}) {
+  const targetAccount = normalizeUsername(targetAccountInput);
+  const participants = (participantsInput || []).map(normalizeUsername).filter(Boolean);
+  const pending = new Set(participants);
+  const matched = new Set();
+  const totalCount = participants.length;
+
+  if (participants.length === 0) {
+    return { ok: true, targetAccount, matched: [], pendingRemaining: 0, rounds: 0 };
   }
 
-  const scrollEl = findScrollableElement(dialog);
-  const found = new Set();
+  networkUsernames.clear();
+  await waitForListPageReady();
+
+  const root = getListScanRoot();
+  const scrollEl = findScrollableElement(root);
+  const maxRounds = options.maxRounds || Math.min(1500, Math.max(180, Math.ceil(totalCount * 0.4)));
+  const staleLimit = options.staleLimit || 10;
+  let staleRounds = 0;
+  let rounds = 0;
+
+  collectPendingMatches(root, pending, matched);
+  reportBulkScanProgress(targetAccount, matched.size, totalCount, pending.size);
+  if (pending.size === 0) {
+    return { ok: true, targetAccount, matched: Array.from(matched), pendingRemaining: 0, rounds: 0 };
+  }
+
+  while (rounds < maxRounds && staleRounds < staleLimit && pending.size > 0) {
+    rounds += 1;
+    const before = matched.size;
+
+    scrollEl.scrollTop += Math.max(520, scrollEl.clientHeight * 0.92);
+    scrollEl.dispatchEvent(new WheelEvent('wheel', {
+      deltaY: 950,
+      bubbles: true,
+      cancelable: true,
+    }));
+    await sleep(55);
+
+    collectPendingMatches(root, pending, matched);
+
+    if (pending.size === 0) break;
+    if (matched.size === before) staleRounds += 1;
+    else staleRounds = 0;
+
+    if (rounds % 8 === 0) {
+      reportBulkScanProgress(targetAccount, matched.size, totalCount, pending.size);
+    }
+  }
+
+  closeTopDialog();
+  reportBulkScanProgress(targetAccount, matched.size, totalCount, pending.size);
+
+  return {
+    ok: true,
+    targetAccount,
+    matched: Array.from(matched),
+    pendingRemaining: pending.size,
+    rounds,
+  };
+}
+
+function buildResultsFromMatchMap(participants, requiredAccounts, minRequired, matchMap) {
+  const results = {};
+
+  for (const participant of participants) {
+    const followedSet = new Set(matchMap[participant] || []);
+    results[participant] = buildFollowResult(
+      requiredAccounts,
+      followedSet,
+      minRequired,
+      'bulk_followers',
+    );
+  }
+
+  return results;
+}
+
+async function scanFollowingSurface(requiredAccounts, minRequired, initialFound = new Set()) {
+  networkUsernames.clear();
+
+  const root = getListScanRoot();
+  const scrollEl = findScrollableElement(root);
+  const found = new Set(initialFound);
   const requiredSet = new Set(requiredAccounts);
   let staleRounds = 0;
 
-  for (let round = 0; round < 32 && staleRounds < 4; round += 1) {
+  collectUsernamesFromRoot(root, found, requiredSet);
+  mergeNetworkUsernames(found, requiredSet);
+  if (countMatched(requiredAccounts, found) >= minRequired) {
+    return buildFollowResult(requiredAccounts, found, minRequired, 'following_list');
+  }
+
+  for (let round = 0; round < 20 && staleRounds < 3; round += 1) {
     const before = found.size;
-    if (collectUsernamesFromRoot(dialog, found, requiredSet)) break;
+    scrollEl.scrollTop += Math.max(420, scrollEl.clientHeight * 0.85);
+    scrollEl.dispatchEvent(new WheelEvent('wheel', {
+      deltaY: 700,
+      bubbles: true,
+      cancelable: true,
+    }));
+    await sleep(70);
 
-    const matchedCount = requiredAccounts.filter((acc) => found.has(acc)).length;
-    if (matchedCount >= minRequired) break;
+    collectUsernamesFromRoot(root, found, requiredSet);
+    mergeNetworkUsernames(found, requiredSet);
 
-    scrollEl.scrollTop += Math.max(360, scrollEl.clientHeight * 0.9);
-    await sleep(220);
-    if (collectUsernamesFromRoot(dialog, found, requiredSet)) break;
-
+    if (countMatched(requiredAccounts, found) >= minRequired) break;
     if (found.size === before) staleRounds += 1;
     else staleRounds = 0;
   }
 
   closeTopDialog();
-  await sleep(180);
-
-  const followed = requiredAccounts.filter((acc) => found.has(acc));
-  const missing = requiredAccounts.filter((acc) => !found.has(acc));
-
-  return {
-    ok: true,
-    followed,
-    missing,
-    meetsRequirement: followed.length >= minRequired,
-    checkedVia: 'following_list',
-  };
+  return buildFollowResult(requiredAccounts, found, minRequired, 'following_list');
 }
 
-async function verifyParticipantFollowsRequired(requiredAccountsInput, minRequiredInput) {
-  const requiredAccounts = (requiredAccountsInput || []).map(normalizeUsername).filter(Boolean);
-  const minRequired = Math.max(1, Math.min(
-    parseInt(minRequiredInput, 10) || requiredAccounts.length,
-    requiredAccounts.length
-  ));
-
-  if (requiredAccounts.length === 0) {
-    return { ok: true, followed: [], missing: [], meetsRequirement: true, checkedVia: 'none' };
-  }
-
-  const followedSet = new Set();
+async function verifyProfilePhase(requiredAccounts, minRequired, followedSet) {
   const loggedInUser = getLoggedInUsername();
 
   if (loggedInUser && requiredAccounts.includes(loggedInUser) && pageHasFollowsYouIndicator()) {
     followedSet.add(loggedInUser);
   }
 
-  const remaining = requiredAccounts.filter((acc) => !followedSet.has(acc));
-  if (followedSet.size >= minRequired) {
-    return {
-      ok: true,
-      followed: Array.from(followedSet),
-      missing: remaining,
-      meetsRequirement: true,
-      checkedVia: 'follows_you',
-    };
+  return buildFollowResult(
+    requiredAccounts,
+    followedSet,
+    minRequired,
+    followedSet.size > 0 ? 'follows_you' : 'profile',
+  );
+}
+
+async function verifyParticipantFollowsRequired(requiredAccountsInput, minRequiredInput, options = {}) {
+  const requiredAccounts = (requiredAccountsInput || []).map(normalizeUsername).filter(Boolean);
+  const minRequired = Math.max(1, Math.min(
+    parseInt(minRequiredInput, 10) || requiredAccounts.length,
+    requiredAccounts.length,
+  ));
+  const phase = options.phase || 'full';
+  const followedSet = new Set(
+    (options.priorFollowed || []).map(normalizeUsername).filter((acc) => requiredAccounts.includes(acc)),
+  );
+
+  if (requiredAccounts.length === 0) {
+    return { ok: true, followed: [], missing: [], meetsRequirement: true, checkedVia: 'none' };
   }
 
-  const listResult = await scanFollowingDialog(requiredAccounts, minRequired);
-  if (!listResult.ok) {
-    const followed = Array.from(followedSet);
-    const missing = requiredAccounts.filter((acc) => !followedSet.has(acc));
-    return {
-      ok: followed.length > 0,
-      error: listResult.error,
-      followed,
-      missing,
-      meetsRequirement: followed.length >= minRequired,
-      checkedVia: followed.length > 0 ? 'follows_you' : 'failed',
-    };
+  if (phase === 'profile') {
+    return verifyProfilePhase(requiredAccounts, minRequired, followedSet);
   }
 
-  listResult.followed.forEach((acc) => followedSet.add(acc));
-  const followed = requiredAccounts.filter((acc) => followedSet.has(acc));
-  const missing = requiredAccounts.filter((acc) => !followedSet.has(acc));
+  if (phase === 'following') {
+    await waitForListPageReady();
+    return scanFollowingSurface(requiredAccounts, minRequired, followedSet);
+  }
 
-  return {
-    ok: true,
-    followed,
-    missing,
-    meetsRequirement: followed.length >= minRequired,
-    checkedVia: loggedInUser && followedSet.has(loggedInUser) ? 'follows_you+following_list' : 'following_list',
-  };
+  const profileResult = await verifyProfilePhase(requiredAccounts, minRequired, followedSet);
+  if (profileResult.meetsRequirement) return profileResult;
+
+  profileResult.followed.forEach((acc) => followedSet.add(acc));
+  return scanFollowingSurface(requiredAccounts, minRequired, followedSet);
 }
 
 if (typeof window !== 'undefined') {
   window.__raffleFollowVerify = {
+    BULK_VERIFY_THRESHOLD,
     verifyParticipantFollowsRequired,
+    scanAccountFollowersForParticipants,
+    buildResultsFromMatchMap,
     waitForProfileReady,
   };
 }

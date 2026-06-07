@@ -358,7 +358,10 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     const request = buildFollowVerifyRequest(participants, requiredFollowAccounts, requireFollowAccounts);
     localStorage.setItem(FOLLOW_VERIFY_REQUEST_KEY, JSON.stringify(request));
     setFollowVerifyPending(true);
-    setFollowVerifyMessage(`${participants.length} katılımcı için doğrulama hazır. Chrome eklentisini açıp "Takip Şartlarını Doğrula" butonuna basın. Instagram oturumunuz açık olmalıdır.`);
+    const bulkHint = participants.length >= 60
+      ? ' Büyük liste modu: zorunlu hesapların takipçi listesi taranır (profil profil gezmekten çok daha hızlı).'
+      : '';
+    setFollowVerifyMessage(`${participants.length} katılımcı için doğrulama hazır.${bulkHint} Chrome eklentisini açıp "Takip Şartlarını Doğrula" butonuna basın. Zorunlu hesaplardan birine giriş yapmış olmalısınız.`);
   };
 
   const handleImageUpload = (e, callback, preset = 'prize') => {

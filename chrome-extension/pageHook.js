@@ -25,8 +25,12 @@
 
   function publish(body) {
     if (!body || body.length < 40) return;
-    if (!COMMENT_HINT.test(body) && !/"text"\s*:\s*"/.test(body)) return;
-    if (!/"edges"|"username"|"owner"|comment_count/i.test(body)) return;
+
+    const hasComment = COMMENT_HINT.test(body) && /"edges"|"text"|comment_count/i.test(body);
+    const hasFollowing = /following|follower|edge_follow|friendship/i.test(body) && /username|"edges"/i.test(body);
+
+    if (!hasComment && !hasFollowing) return;
+
     window.postMessage({ type: 'RAFFLE_IG_NETWORK', body }, '*');
   }
 
