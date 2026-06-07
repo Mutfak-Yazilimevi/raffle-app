@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Instagram Raffle Helper",
-  "version": "1.4.2",
+  "version": "1.4.4",
   "description": "Instagram yorumlarını çeker ve takip şartlarını doğrular.",
   "background": {
     "service_worker": "background.js"

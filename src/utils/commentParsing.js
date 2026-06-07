@@ -83,17 +83,54 @@ export function parseRawText(text) {
   return parsedComments;
 }
 
+export function dedupeTopLevelComments(comments) {
+  if (!Array.isArray(comments)) return [];
+
+  const byId = new Map();
+  const withoutId = [];
+
+  for (const item of comments) {
+    if (item.id) {
+      const id = String(item.id);
+      if (!byId.has(id)) byId.set(id, item);
+    } else {
+      withoutId.push(item);
+    }
+  }
+
+  const coveredById = new Set(
+    [...byId.values()].map((item) => `${item.username.toLowerCase()}\0${item.text}`),
+  );
+
+  const result = [...byId.values()];
+  for (const item of withoutId) {
+    const contentKey = `${item.username.toLowerCase()}\0${item.text}`;
+    if (coveredById.has(contentKey)) continue;
+    result.push(item);
+  }
+
+  return result;
+}
+
 export function normalizeImportedComments(comments) {
   if (!Array.isArray(comments)) return [];
 
-  return comments
-    .filter((item) => item && item.username && item.text && !item.isReply)
-    .map((item) => ({
-      username: String(item.username).trim().replace(/^@+/, ''),
-      text: String(item.text).trim(),
-      id: item.id ? String(item.id) : undefined,
-    }))
-    .filter((item) => item.username && item.text);
+  return dedupeTopLevelComments(
+    comments
+      .filter((item) => item && item.username && item.text && !item.isReply)
+      .map((item) => ({
+        username: String(item.username).trim().replace(/^@+/, ''),
+        text: String(item.text).trim(),
+        id: item.id ? String(item.id) : undefined,
+      }))
+      .filter((item) => item.username && item.text),
+  );
+}
+
+export function getUniqueParticipantUsernames(comments) {
+  return Array.from(new Set(
+    normalizeImportedComments(comments).map((item) => item.username.toLowerCase()),
+  ));
 }
 
 export function parseCSV(csvText) {

@@ -22,7 +22,7 @@ import {
   isUserBlacklisted,
   userHasBlacklistedKeyword,
 } from '../utils/participantCriteriaSummary';
-import { normalizeImportedComments } from '../utils/commentParsing';
+import { normalizeImportedComments, getUniqueParticipantUsernames } from '../utils/commentParsing';
 import { resizeImageFromFile } from '../utils/resizeUploadedImage';
 
 const EMPTY_BRAND = { name: '', logo: '', raffleName: '', postUrl: '' };
@@ -328,7 +328,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
       return;
     }
 
-    const participants = Array.from(new Set(comments.map((c) => c.username)));
+    const participants = getUniqueParticipantUsernames(comments);
     const request = buildFollowVerifyRequest(participants, requiredFollowAccounts, requireFollowAccounts);
     localStorage.setItem(FOLLOW_VERIFY_REQUEST_KEY, JSON.stringify(request));
   }, [comments, followRuleActive, requiredFollowAccounts, requireFollowAccounts]);
@@ -367,14 +367,14 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
       alert('Doğrulama için önce yorumları yükleyin.');
       return;
     }
-    const participants = Array.from(new Set(comments.map((c) => c.username)));
+    const participants = getUniqueParticipantUsernames(comments);
     const request = buildFollowVerifyRequest(participants, requiredFollowAccounts, requireFollowAccounts);
     localStorage.setItem(FOLLOW_VERIFY_REQUEST_KEY, JSON.stringify(request));
     setFollowVerifyPending(true);
     const bulkHint = participants.length >= 60
       ? ' Büyük liste modu: zorunlu hesapların takipçi listesi taranır (profil profil gezmekten çok daha hızlı).'
       : '';
-    setFollowVerifyMessage(`${participants.length} katılımcı için doğrulama hazır.${bulkHint} Chrome eklentisini açıp "Takip Şartlarını Doğrula" butonuna basın. Zorunlu hesaplardan birine giriş yapmış olmalısınız.`);
+    setFollowVerifyMessage(`${participants.length} benzersiz katılımcı için doğrulama hazır.${bulkHint} Chrome eklentisini açıp "Takip Şartlarını Doğrula" butonuna basın. Zorunlu hesaplardan birine giriş yapmış olmalısınız.`);
   };
 
   const handleImageUpload = (e, callback, preset = 'prize') => {

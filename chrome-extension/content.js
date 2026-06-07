@@ -63,8 +63,16 @@ const REPLY_BRANCH_KEYS = new Set([
   'edge_threaded_comments',
   'threaded_comments',
   'preview_child_comments',
+  'preview_comments',
   'replies',
   'child_comment_count',
+  'comment_replies',
+]);
+
+const TOP_LEVEL_COMMENT_CONTAINER_KEYS = new Set([
+  'edge_media_to_parent_comment',
+  'edge_media_to_comment',
+  'comments',
 ]);
 
 let scrapingActive = false;
@@ -102,6 +110,75 @@ function parseCountToken(raw) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function parseCountFromMetricsSpan(el) {
+  if (!el) return 0;
+
+  const text = `${el.textContent || ''} ${el.getAttribute('aria-label') || ''}`.replace(/\s+/g, ' ').trim();
+  if (!text) return 0;
+
+  const labeledMatch = text.match(/([\d.,\s]+)\s*(?:yorum|comments?)/iu);
+  if (labeledMatch) return parseCountToken(labeledMatch[1]);
+
+  if (/^[\d.,\s]+$/.test(text)) return parseCountToken(text);
+
+  const looseMatch = text.match(/([\d.,\s]+)/);
+  return looseMatch ? parseCountToken(looseMatch[1]) : 0;
+}
+
+/** main > … > section > section > div > span:nth-child(4) — sınıflar değişken, kırılım sabit. */
+function collectPostMetricsCommentCandidates() {
+  const main = document.querySelector('main');
+  if (!main) return [];
+
+  const candidates = [];
+
+  for (const outerSection of main.querySelectorAll('section')) {
+    if (outerSection.closest('[role="dialog"]')) continue;
+
+    const innerSections = outerSection.querySelectorAll(':scope section');
+    const metricSections = innerSections.length > 0 ? innerSections : [outerSection];
+
+    for (const metricSection of metricSections) {
+      for (const metricsDiv of metricSection.querySelectorAll(':scope > div')) {
+        const spans = metricsDiv.querySelectorAll(':scope > span');
+        if (spans.length < 4) continue;
+
+        const commentSpan = spans[3];
+        const count = parseCountFromMetricsSpan(commentSpan);
+        if (count <= 0) continue;
+
+        let score = 20;
+        if (spans.length === 4) score += 25;
+        if (innerSections.length > 0) score += 15;
+        if (commentSpan.closest('a, button, [role="button"], [role="link"]')) score += 10;
+        if (/yorum|comment/i.test(`${commentSpan.textContent || ''} ${commentSpan.getAttribute('aria-label') || ''}`)) {
+          score += 20;
+        }
+
+        candidates.push({ commentSpan, count, score });
+      }
+    }
+  }
+
+  return candidates;
+}
+
+function findPostMetricsCommentSpan() {
+  const candidates = collectPostMetricsCommentCandidates();
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => b.score - a.score || b.count - a.count);
+  return candidates[0].commentSpan;
+}
+
+function detectCommentCountFromPostMetrics() {
+  const candidates = collectPostMetricsCommentCandidates();
+  if (candidates.length === 0) return 0;
+
+  candidates.sort((a, b) => b.score - a.score || b.count - a.count);
+  return candidates[0].count;
+}
+
 function detectCommentCountFromEmbedded() {
   let best = 0;
 
@@ -128,6 +205,7 @@ function detectCommentCountFromEmbedded() {
 function detectExpectedCommentTotal() {
   let expandBest = expectedCommentTotal;
   let genericBest = 0;
+  const metricsBest = detectCommentCountFromPostMetrics();
   const embeddedBest = detectCommentCountFromEmbedded();
   const sources = [];
 
@@ -168,6 +246,11 @@ function detectExpectedCommentTotal() {
     }
   }
 
+  if (metricsBest > 0) {
+    expectedCommentTotal = metricsBest;
+    return expectedCommentTotal;
+  }
+
   if (expandBest > 0) {
     expectedCommentTotal = expandBest;
   } else if (genericBest > 0) {
@@ -183,7 +266,7 @@ function detectExpectedCommentTotal() {
 
 function getMaxIdleSteps() {
   detectExpectedCommentTotal();
-  if (expectedCommentTotal > commentsList.length + 5) {
+  if (expectedCommentTotal > getFinalizedCommentCount() + 5) {
     return Math.min(
       MAX_IDLE_STEPS_CAP,
       Math.max(AUTO_FINISH_IDLE_STEPS_LONG, Math.ceil(expectedCommentTotal / 3)),
@@ -210,13 +293,13 @@ function findExpandCommentsControl() {
 
 function hasMoreCommentsExpected() {
   detectExpectedCommentTotal();
-  if (expectedCommentTotal > 0 && commentsList.length + 3 < expectedCommentTotal) {
+  if (expectedCommentTotal > 0 && getFinalizedCommentCount() + 3 < expectedCommentTotal) {
     return true;
   }
 
   if (commentsList.length >= 10 && commentsList.length <= 20 && unchangedStepCount < getMaxIdleSteps()) {
     const root = getScrapeRoot();
-    if (countRowsInRoot(root) > commentsList.length + 2) return true;
+    if (countRowsInRoot(root) > getFinalizedCommentCount() + 2) return true;
     if (findExpandCommentsControl()) return true;
   }
 
@@ -230,7 +313,7 @@ function shouldAutoFinish() {
     return unchangedStepCount >= getMaxIdleSteps();
   }
 
-  if (expectedCommentTotal > 0 && commentsList.length >= expectedCommentTotal) {
+  if (expectedCommentTotal > 0 && getFinalizedCommentCount() >= expectedCommentTotal) {
     return unchangedStepCount >= 4;
   }
 
@@ -238,11 +321,28 @@ function shouldAutoFinish() {
 }
 
 function countRowsInRoot(root) {
+  if (commentUl && commentUl.isConnected) {
+    return commentUl.querySelectorAll(':scope > li, :scope > [role="listitem"]').length;
+  }
+
   let count = 0;
   for (const container of root.querySelectorAll('ul, [role="list"]')) {
+    if (scoreCommentContainer(container) < 1) continue;
     count += container.querySelectorAll(':scope > li, :scope > [role="listitem"]').length;
   }
   return count;
+}
+
+function isTopLevelCommentContainerKey(key) {
+  if (!key || typeof key !== 'string') return false;
+  if (REPLY_BRANCH_KEYS.has(key)) return false;
+  if (TOP_LEVEL_COMMENT_CONTAINER_KEYS.has(key)) return true;
+  if (/threaded|child|reply|preview_child/i.test(key)) return false;
+  return /parent_comment|media_to_(?:parent_)?comment/i.test(key);
+}
+
+function canIngestNetworkCommentAt(parentKey) {
+  return parentKey === 'edges' || isTopLevelCommentContainerKey(parentKey);
 }
 
 function getScrapeRoot() {
@@ -251,8 +351,12 @@ function getScrapeRoot() {
     || document;
 }
 
+function getFinalizedCommentCount() {
+  return finalizeCommentsList().length;
+}
+
 function getStoredCommentCount() {
-  return commentsList.length;
+  return getFinalizedCommentCount();
 }
 
 function addComment(username, text, options = {}) {
@@ -268,6 +372,8 @@ function addComment(username, text, options = {}) {
   } else if (options.domKey) {
     if (seenDomKeys.has(options.domKey)) return false;
     seenDomKeys.add(options.domKey);
+  } else {
+    return false;
   }
 
   commentsList.push({
@@ -277,6 +383,33 @@ function addComment(username, text, options = {}) {
     isReply: false,
   });
   return true;
+}
+
+function finalizeCommentsList(rawList = commentsList) {
+  const byId = new Map();
+  const withoutId = [];
+
+  for (const comment of rawList) {
+    if (comment.id) {
+      const id = String(comment.id);
+      if (!byId.has(id)) byId.set(id, comment);
+    } else {
+      withoutId.push(comment);
+    }
+  }
+
+  const coveredById = new Set(
+    [...byId.values()].map((comment) => `${comment.username.toLowerCase()}\0${comment.text}`),
+  );
+
+  const finalized = [...byId.values()];
+  for (const comment of withoutId) {
+    const contentKey = `${comment.username.toLowerCase()}\0${comment.text}`;
+    if (coveredById.has(contentKey)) continue;
+    finalized.push(comment);
+  }
+
+  return finalized;
 }
 
 function ingestCommentsFromNetworkPayload(payload) {
@@ -297,9 +430,10 @@ function ingestCommentsFromNetworkPayload(payload) {
 
 function isReplyCommentNode(node) {
   if (!node || typeof node !== 'object') return false;
-  if (node.parent_comment_id || node.parent_id) return true;
+  if (node.parent_comment_id || node.parent_id || node.replied_to_comment_id) return true;
+  if (node.is_reply === true || node.is_child === true) return true;
   const typeName = String(node.__typename || '');
-  return /child|reply/i.test(typeName) && /comment/i.test(typeName);
+  return /child|reply|subcomment/i.test(typeName) && /comment/i.test(typeName);
 }
 
 function ingestCommentNode(node) {
@@ -316,49 +450,30 @@ function ingestCommentNode(node) {
   if (addComment(username, text, { commentId, isReply: false })) notifyPopup();
 }
 
-function walkForNetworkComments(value, depth = 0) {
+function walkForNetworkComments(value, depth = 0, parentKey = '') {
   if (!value || depth > 20) return;
 
   if (Array.isArray(value)) {
-    for (const item of value) walkForNetworkComments(item, depth + 1);
+    for (const item of value) walkForNetworkComments(item, depth + 1, parentKey);
     return;
   }
 
   if (typeof value !== 'object') return;
 
-  if (value.node?.user?.username && typeof value.node?.text === 'string') {
+  if (value.node && canIngestNetworkCommentAt(parentKey)) {
     ingestCommentNode(value.node);
   }
 
-  if (value.node?.owner?.username && typeof value.node?.text === 'string') {
-    ingestCommentNode(value.node);
-  }
-
-  if (value.user?.username && typeof value.text === 'string') {
-    ingestCommentNode(value);
-  }
-
-  if (value.owner?.username && typeof value.text === 'string') {
-    ingestCommentNode(value);
-  }
-
-  if (typeof value.text === 'string' && typeof value.username === 'string') {
-    ingestCommentNode(value);
-  }
-
-  if (Array.isArray(value.edges)) {
+  if (Array.isArray(value.edges) && canIngestNetworkCommentAt(parentKey)) {
     for (const edge of value.edges) {
       if (edge?.node) ingestCommentNode(edge.node);
     }
-    return;
   }
 
   for (const key of Object.keys(value)) {
     if (key === '__typename' || key === 'page_info') continue;
     if (REPLY_BRANCH_KEYS.has(key)) continue;
-    if (key === 'edges') continue;
-    if (key === 'comments' && (value.text || value.user?.username)) continue;
-    walkForNetworkComments(value[key], depth + 1);
+    walkForNetworkComments(value[key], depth + 1, key);
   }
 }
 
@@ -419,11 +534,18 @@ function isReplyCommentRow(row) {
   const item = row.matches?.('li, [role="listitem"]') ? row : row.closest('li, [role="listitem"]');
   if (!item) return false;
 
-  const parent = item.parentElement;
-  if (!parent) return false;
+  if (commentUl && commentUl.isConnected) {
+    const directItems = commentUl.querySelectorAll(':scope > li, :scope > [role="listitem"]');
+    if (!Array.from(directItems).includes(item)) return true;
+  }
 
-  const ownerRow = parent.closest('li, [role="listitem"]');
-  return Boolean(ownerRow && ownerRow !== item);
+  const listParent = item.parentElement;
+  if (listParent) {
+    const ownerRow = listParent.closest('li, [role="listitem"]');
+    if (ownerRow && ownerRow !== item) return true;
+  }
+
+  return false;
 }
 
 function parseCommentRow(row) {
@@ -516,7 +638,11 @@ function scrapeCommentsByHeuristic(root) {
     if (!textEl) continue;
 
     const text = textEl.textContent.trim();
-    addComment(username, text, { commentId: extractCommentIdFromRow(row) });
+    const commentId = extractCommentIdFromRow(row);
+    addComment(username, text, {
+      commentId,
+      domKey: commentId ? null : `heur:${username.toLowerCase()}:${link.getAttribute('href') || text.length}:${text.slice(0, 48)}`,
+    });
   }
 }
 
@@ -563,16 +689,31 @@ function findCommentSection() {
 }
 
 function scrapeAllCommentLists(root, forceFull = false) {
-  let maxItems = 0;
-  let listIndex = 0;
+  refreshCommentTargets();
 
-  for (const container of root.querySelectorAll('ul, [role="list"]')) {
-    if (scoreCommentContainer(container) < 1) continue;
-    maxItems = Math.max(maxItems, scrapeCommentList(container, forceFull, listIndex));
-    listIndex += 1;
+  if (commentUl && commentUl.isConnected) {
+    return scrapeCommentList(commentUl, forceFull, 0);
   }
 
-  scrapeCommentsByHeuristic(root);
+  let maxItems = 0;
+  let listIndex = 0;
+  let bestContainer = null;
+  let bestScore = 0;
+
+  for (const container of root.querySelectorAll('ul, [role="list"]')) {
+    const score = scoreCommentContainer(container);
+    if (score < 1) continue;
+    if (score > bestScore) {
+      bestScore = score;
+      bestContainer = container;
+    }
+  }
+
+  if (bestContainer) {
+    maxItems = scrapeCommentList(bestContainer, forceFull, listIndex);
+  } else {
+    scrapeCommentsByHeuristic(root);
+  }
 
   return maxItems;
 }
@@ -638,7 +779,7 @@ function refreshCommentTargets() {
 function scrapeVisibleComments(forceFull = false) {
   const now = Date.now();
   if (!forceFull && now - lastScrapeTime < SCRAPE_MIN_INTERVAL_MS) {
-    return commentsList.length;
+    return getFinalizedCommentCount();
   }
   lastScrapeTime = now;
 
@@ -658,7 +799,7 @@ function scrapeVisibleComments(forceFull = false) {
 
   scrapeEmbeddedPageData();
   lastParsedLiCount = maxItems;
-  return commentsList.length;
+  return getFinalizedCommentCount();
 }
 
 function notifyPopup(force = false) {
@@ -669,20 +810,21 @@ function notifyPopup(force = false) {
   let phase = 'loading';
   if (!scrapingActive) {
     phase = 'ready';
-  } else if (shouldAutoFinish() && commentsList.length > 0) {
+  } else if (shouldAutoFinish() && getFinalizedCommentCount() > 0) {
     phase = 'ready';
-  } else if (commentsList.length > 0 && unchangedStepCount >= STALL_STEP_THRESHOLD) {
+  } else if (getFinalizedCommentCount() > 0 && unchangedStepCount >= STALL_STEP_THRESHOLD) {
     phase = 'stalled';
-  } else if (commentsList.length > 0) {
+  } else if (getFinalizedCommentCount() > 0) {
     phase = 'scraping';
   }
 
   chrome.runtime.sendMessage({
     type: 'SCRAPE_UPDATE',
-    count: commentsList.length,
+    count: getFinalizedCommentCount(),
     phase,
     unchangedSteps: unchangedStepCount,
     expectedTotal: expectedCommentTotal,
+    metricsTotal: detectCommentCountFromPostMetrics(),
   }).catch(() => {});
 }
 
@@ -930,7 +1072,21 @@ function clickExpandCommentsLinks(force = false) {
   return false;
 }
 
+function clickPostMetricsCommentControl() {
+  const commentSpan = findPostMetricsCommentSpan();
+  if (!commentSpan) return false;
+
+  const clickable =
+    commentSpan.closest('a, button, [role="button"], [role="link"]')
+    || commentSpan.parentElement?.closest('a, button, [role="button"], [role="link"]')
+    || commentSpan.parentElement
+    || commentSpan;
+
+  return clickTrackedTarget(clickable, 'metrics-comment-count');
+}
+
 function clickOpenCommentsPanel() {
+  if (clickPostMetricsCommentControl()) return true;
   if (clickExpandCommentsLinks(false)) return true;
 
   const root = loadMoreRoot || getScrapeRoot();
@@ -1020,10 +1176,10 @@ function autoScrollStep() {
   if (
     scrollStepCount === 1
     || stalled
-    || (scrollStepCount % 6 === 0 && commentsList.length === lastCountAtClick)
+    || (scrollStepCount % 6 === 0 && getFinalizedCommentCount() === lastCountAtClick)
   ) {
     clickLoadMoreButtons(stalled && needMore);
-    lastCountAtClick = commentsList.length;
+    lastCountAtClick = getFinalizedCommentCount();
   }
 
   if (!commentUl || !commentUl.isConnected) refreshCommentTargets();
@@ -1108,7 +1264,7 @@ function stopScraping() {
   stopObserver();
   dismissAccidentalMenus();
   scrapeVisibleComments(true);
-  return commentsList.length;
+  return getFinalizedCommentCount();
 }
 
 function resetState() {
@@ -1132,7 +1288,7 @@ function resetState() {
 }
 
 function getCommentsArray() {
-  return commentsList.map(({ username, text, id, isReply }) => ({
+  return finalizeCommentsList().map(({ username, text, id, isReply }) => ({
     username,
     text,
     id,
@@ -1175,7 +1331,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     autoScrollStep();
     scheduleNextScrollStep();
 
-    sendResponse({ status: 'started', count: commentsList.length });
+    sendResponse({ status: 'started', count: getFinalizedCommentCount() });
   } else if (request.type === 'STOP_SCRAPING') {
     const count = stopScraping();
     sendResponse({ status: 'stopped', count });
