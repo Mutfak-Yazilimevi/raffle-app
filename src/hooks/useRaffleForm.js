@@ -678,7 +678,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
   });
 
   const handleGenerateWithAI = async () => {
-    const apiKey = (localStorage.getItem('gemini_api_key') || '').trim();
+    const apiKey = (localStorage.getItem('gemini_api_key') || import.meta.env.VITE_GEMINI_API_KEY || '').trim();
     if (!apiKey) {
       setAiMessage('Önce API anahtarı girin (⚙ AI Ayarı)');
       return;
@@ -692,7 +692,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
       const contextStr = ctxParts.length ? `\n\n${ctxParts.join('\n')}` : '';
       const prompt = `Instagram çekilişi için kısa, akılda kalıcı Türkçe bir çekiliş adı oluştur.${contextStr}\n\nSadece adı yaz, başka hiçbir şey ekleme.`;
       const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
