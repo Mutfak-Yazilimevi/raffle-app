@@ -774,7 +774,7 @@ Sadece JSON döndür, başka açıklama ekleme.`;
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 600, temperature: 0.2, responseMimeType: 'application/json' },
+            generationConfig: { maxOutputTokens: 600, temperature: 0.2 },
           }),
         },
       );
