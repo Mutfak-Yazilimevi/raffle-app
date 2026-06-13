@@ -26,6 +26,7 @@ import { normalizeImportedComments, getUniqueParticipantUsernames } from '../uti
 import { resizeImageFromFile, resizeUploadedImage, recompressIfNeeded } from '../utils/resizeUploadedImage';
 
 import { normalizeBrand, EMPTY_BRAND_SCHEDULE } from '../utils/raffleSchedule';
+import { fetchPostMetadata } from '../utils/fetchPostMetadata';
 
 const EMPTY_BRAND = { name: '', logo: '', raffleName: '', postUrl: '', postDescription: '', ...EMPTY_BRAND_SCHEDULE };
 const EMPTY_PRIZE = () => ({ id: Date.now(), name: '', image: '', winnerCount: 1, substituteCount: 1 });
@@ -722,27 +723,23 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     try {
       let description = brand.postDescription;
 
-      if (!description && brand.postUrl) {
-        const extId = localStorage.getItem('raffle_extension_id');
-        if (extId && window.chrome?.runtime?.sendMessage) {
-          const result = await new Promise((resolve) => {
-            window.chrome.runtime.sendMessage(extId, { type: 'FETCH_POST_METADATA', url: brand.postUrl }, (res) => {
-              resolve(res || { ok: false });
-            });
-          });
-          if (result?.ok) {
-            description = result.description || '';
-            setBrand((prev) => ({
-              ...prev,
-              postDescription: description,
-              name: prev.name || result.brandName || '',
-            }));
-          }
+      if (brand.postUrl) {
+        const result = await fetchPostMetadata(brand.postUrl);
+        if (result.ok && result.description) {
+          description = result.description;
+          setBrand((prev) => ({
+            ...prev,
+            postDescription: description,
+            name: prev.name || result.brandName || prev.name,
+          }));
+        } else if (!description) {
+          setAiMessage(result.error || 'Post bilgileri alınamadı');
+          return;
         }
       }
 
       if (!description) {
-        setAiMessage('Post açıklaması alınamadı. Önce eklentide "Post\'tan Doldur" yapın.');
+        setAiMessage('Gönderi linki girilmemiş ya da açıklama bulunamadı');
         return;
       }
 
