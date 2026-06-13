@@ -678,7 +678,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
   });
 
   const handleGenerateWithAI = async () => {
-    const apiKey = (localStorage.getItem('anthropic_api_key') || '').trim();
+    const apiKey = (localStorage.getItem('gemini_api_key') || '').trim();
     if (!apiKey) {
       setAiMessage('Önce API anahtarı girin (⚙ AI Ayarı)');
       return;
@@ -686,30 +686,28 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     setGeneratingWithAI(true);
     setAiMessage('');
     try {
-      const parts = [];
-      if (brand.name) parts.push(`Marka: ${brand.name}`);
-      if (brand.postDescription) parts.push(`Gönderi: ${brand.postDescription.slice(0, 400)}`);
-      const contextStr = parts.length ? `\n\n${parts.join('\n')}` : '';
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
+      const ctxParts = [];
+      if (brand.name) ctxParts.push(`Marka: ${brand.name}`);
+      if (brand.postDescription) ctxParts.push(`Gönderi: ${brand.postDescription.slice(0, 400)}`);
+      const contextStr = ctxParts.length ? `\n\n${ctxParts.join('\n')}` : '';
+      const prompt = `Instagram çekilişi için kısa, akılda kalıcı Türkçe bir çekiliş adı oluştur.${contextStr}\n\nSadece adı yaz, başka hiçbir şey ekleme.`;
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 60, temperature: 0.8 },
+          }),
         },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 60,
-          messages: [{ role: 'user', content: `Instagram çekilişi için kısa, akılda kalıcı Türkçe bir çekiliş adı oluştur.${contextStr}\n\nSadece adı yaz, başka hiçbir şey ekleme.` }],
-        }),
-      });
+      );
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.error?.message || `HTTP ${resp.status}`);
       }
       const data = await resp.json();
-      const name = data.content?.[0]?.text?.trim();
+      const name = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
       if (name) {
         setBrand((prev) => ({ ...prev, raffleName: name }));
         setAiMessage('✓ Oluşturuldu');

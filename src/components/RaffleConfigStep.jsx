@@ -22,7 +22,7 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
     generatingWithAI, aiMessage, setAiMessage, handleGenerateWithAI,
   } = form;
 
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('anthropic_api_key') || '');
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
   const [showApiKey, setShowApiKey] = useState(false);
 
   const handleSaveClick = async () => {
@@ -162,21 +162,21 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
           </button>
           {showApiKey && (
             <div className="form-group" style={{ marginTop: '10px', marginBottom: 0 }}>
-              <label className="form-label" style={{ fontSize: '12px' }}>Anthropic API Anahtarı</label>
+              <label className="form-label" style={{ fontSize: '12px' }}>Google Gemini API Anahtarı</label>
               <input
                 type="password"
                 className="form-input"
-                placeholder="sk-ant-api03-…"
+                placeholder="AIza…"
                 value={apiKey}
                 onChange={(e) => {
                   setApiKey(e.target.value);
-                  localStorage.setItem('anthropic_api_key', e.target.value);
+                  localStorage.setItem('gemini_api_key', e.target.value);
                 }}
               />
               <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
                 Tarayıcınızda saklanır.{' '}
-                <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--insta-blue)' }}>
-                  console.anthropic.com
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--insta-blue)' }}>
+                  aistudio.google.com
                 </a>{' '}adresinden API anahtarı alın.
               </span>
             </div>
