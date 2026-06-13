@@ -343,17 +343,6 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
           postDescription: result.description || prev.postDescription,
         }));
 
-        if (result.imageDataUrl) {
-          try {
-            const resized = await resizeUploadedImage(result.imageDataUrl, 'prize');
-            setPrizes((prev) => prev.map((prize, i) =>
-              i === 0 && !prize.image ? { ...prize, image: resized } : prize,
-            ));
-          } catch (_) {
-            // image resize failed, not critical
-          }
-        }
-
         setPostImportMessage(
           result.brandName
             ? `Post bilgileri dolduruldu — @${result.brandName}`
@@ -748,10 +737,6 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
               postDescription: description,
               name: prev.name || result.brandName || '',
             }));
-            if (result.imageDataUrl) {
-              const resized = await resizeUploadedImage(result.imageDataUrl, 'prize');
-              setPrizes((prev) => prev.map((p, i) => (i === 0 && !p.image ? { ...p, image: resized } : p)));
-            }
           }
         }
       }

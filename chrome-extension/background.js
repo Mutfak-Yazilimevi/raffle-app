@@ -383,6 +383,34 @@ function extractOgMeta(html, property) {
   return m ? decodeHtmlEntities(m[1]) : null;
 }
 
+function extractJsonLdCaption(html) {
+  try {
+    const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      const data = JSON.parse(m[1]);
+      const items = Array.isArray(data) ? data : [data];
+      for (const item of items) {
+        if (item.caption) return String(item.caption);
+        if (item.description) return String(item.description);
+        if (item.articleBody) return String(item.articleBody);
+      }
+    }
+  } catch (_) {}
+  return '';
+}
+
+function cleanOgDescription(desc) {
+  if (!desc) return '';
+  // Strip Instagram boilerplate: "1,234 Likes, 56 Comments - Handle on Instagram: \"caption\""
+  let s = desc
+    .replace(/^[\d,.]+ (?:likes?|beğeni)[,\s]+[\d,.]+ (?:comments?|yorum)\s*[-–]\s*/i, '')
+    .replace(/^[^:]+\s+on\s+Instagram:\s*"?([\s\S]+?)"?$/i, '$1')
+    .replace(/^[^:]+:\s*"([\s\S]+)"$/s, '$1')
+    .trim();
+  return s || desc.trim();
+}
+
 async function fetchPostMetadata(url) {
   let html;
   try {
@@ -400,49 +428,28 @@ async function fetchPostMetadata(url) {
   }
 
   const title = extractOgMeta(html, 'og:title');
-  const description = extractOgMeta(html, 'og:description');
-  const ogImageUrl = extractOgMeta(html, 'og:image');
+  const ogDesc = extractOgMeta(html, 'og:description');
 
-  if (!title && !description) {
+  if (!title && !ogDesc) {
     return { ok: false, error: 'Post bilgileri bulunamadı (giriş gerekiyor olabilir)' };
   }
 
-  // Instagram og:title formats:
-  // "Display Name (@username) • Instagram photos and videos"
-  // "Display Name (@username) on Instagram: \"caption\""
+  // JSON-LD has the full caption; og:description is often truncated boilerplate
+  const jsonLdCaption = extractJsonLdCaption(html);
+  const description = jsonLdCaption || cleanOgDescription(ogDesc) || ogDesc || '';
+
+  // Instagram og:title: "Display Name (@username) • ..." or "Display Name (@username) on Instagram: ..."
   let brandName = null;
   if (title) {
     const m1 = title.match(/^(.+?)\s+\(@[^)]+\)/);
-    if (m1) {
-      brandName = m1[1].trim();
-    } else {
+    if (m1) brandName = m1[1].trim();
+    else {
       const m2 = title.match(/^@?(\S+)\s+[•·]/);
       if (m2) brandName = m2[1].trim();
     }
   }
 
-  let imageDataUrl = null;
-  if (ogImageUrl) {
-    try {
-      const imgResp = await fetch(ogImageUrl);
-      if (imgResp.ok) {
-        const buf = await imgResp.arrayBuffer();
-        if (buf.byteLength <= 3 * 1024 * 1024) {
-          const uint8 = new Uint8Array(buf);
-          let bin = '';
-          for (let i = 0; i < uint8.length; i += 8192) {
-            bin += String.fromCharCode(...uint8.subarray(i, Math.min(i + 8192, uint8.length)));
-          }
-          const ct = imgResp.headers.get('content-type') || 'image/jpeg';
-          imageDataUrl = `data:${ct};base64,${btoa(bin)}`;
-        }
-      }
-    } catch (_) {
-      // image fetch failed, not critical
-    }
-  }
-
-  return { ok: true, postUrl: url, brandName, title, description, imageDataUrl };
+  return { ok: true, postUrl: url, brandName, title, description };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
