@@ -1,4 +1,3 @@
-import React from 'react';
 import { COMMENT_BASELINE, ENTRY_METHOD_HELP, ENTRY_METHOD_OPTIONS } from '../../constants/ruleHelpCopy';
 import {
   FormFieldHelp,

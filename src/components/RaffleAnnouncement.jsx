@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Award, Megaphone, Plus, Trophy, Clock, CheckCircle2, ChevronRight, Loader2,
+  Award, Megaphone, Plus, Trophy, Clock, CheckCircle2, ChevronRight, Loader2, Trash2,
 } from 'lucide-react';
 import { loadRaffleDisplayBundle } from '../utils/setupStorage';
 import RaffleAnnouncementDetail from './RaffleAnnouncementDetail';
@@ -31,13 +31,17 @@ function getEntryTitle(entry) {
 export default function RaffleAnnouncement({
   raffleEntries,
   onCreateRaffle,
+  onDeleteRaffle,
   onDefineConfig,
   onStartScheduled,
 }) {
+  const PAGE_SIZE = 8;
   const [activeTab, setActiveTab] = useState('ongoing');
+  const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
   const [detailBundle, setDetailBundle] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const visibleEntries = useMemo(
     () => raffleEntries.filter((entry) => getEntryPhase(entry) !== 'empty'),
@@ -55,6 +59,8 @@ export default function RaffleAnnouncement({
   );
 
   const tabEntries = activeTab === 'completed' ? completedEntries : ongoingEntries;
+  const totalPages = Math.ceil(tabEntries.length / PAGE_SIZE);
+  const pagedEntries = tabEntries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   useEffect(() => {
     if (!selectedId) {
@@ -126,7 +132,7 @@ export default function RaffleAnnouncement({
           role="tab"
           aria-selected={activeTab === 'ongoing'}
           className={`announcement-tab${activeTab === 'ongoing' ? ' active' : ''}`}
-          onClick={() => setActiveTab('ongoing')}
+          onClick={() => { setActiveTab('ongoing'); setPage(0); }}
         >
           <Clock size={15} />
           Devam Edenler
@@ -137,7 +143,7 @@ export default function RaffleAnnouncement({
           role="tab"
           aria-selected={activeTab === 'completed'}
           className={`announcement-tab${activeTab === 'completed' ? ' active' : ''}`}
-          onClick={() => setActiveTab('completed')}
+          onClick={() => { setActiveTab('completed'); setPage(0); }}
         >
           <CheckCircle2 size={15} />
           Tamamlananlar
@@ -164,15 +170,18 @@ export default function RaffleAnnouncement({
         </div>
       ) : (
         <div className="announcement-list">
-          {tabEntries.map((entry) => {
+          {pagedEntries.map((entry) => {
             const phase = getEntryPhase(entry);
             const winnerCount = entry.drawResults?.winners?.length || 0;
+            const isConfirmingDelete = deletingId === entry.id;
             return (
-              <button
+              <div
                 key={entry.id}
-                type="button"
                 className="announcement-card glass-container"
-                onClick={() => setSelectedId(entry.id)}
+                role="button"
+                tabIndex={0}
+                onClick={() => { if (!isConfirmingDelete) setSelectedId(entry.id); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!isConfirmingDelete) setSelectedId(entry.id); } }}
               >
                 <div className="announcement-card-icon">
                   {phase === 'completed' ? (
@@ -194,10 +203,69 @@ export default function RaffleAnnouncement({
                     {entry.updatedAt ? ` · ${formatRaffleDate(entry.updatedAt)}` : ''}
                   </span>
                 </div>
-                <ChevronRight size={18} className="announcement-card-chevron" />
-              </button>
+                {isConfirmingDelete ? (
+                  <div
+                    style={{ display: 'flex', gap: '6px', alignItems: 'center' }}
+                    onClick={(e) => e.stopPropagation()}
+                    role="presentation"
+                  >
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      style={{ fontSize: '13px', padding: '4px 10px' }}
+                      onClick={(e) => { e.stopPropagation(); onDeleteRaffle(entry.id); setDeletingId(null); }}
+                    >
+                      Sil
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ fontSize: '13px', padding: '4px 10px' }}
+                      onClick={(e) => { e.stopPropagation(); setDeletingId(null); }}
+                    >
+                      İptal
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Çekilişi sil"
+                      className="announcement-card-delete"
+                      onClick={(e) => { e.stopPropagation(); setDeletingId(entry.id); }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                    <ChevronRight size={18} className="announcement-card-chevron" />
+                  </>
+                )}
+              </div>
             );
           })}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', margin: '8px 0 16px' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ padding: '6px 14px', fontSize: '13px' }}
+            disabled={page === 0}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            ‹ Önceki
+          </button>
+          <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{page + 1} / {totalPages}</span>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ padding: '6px 14px', fontSize: '13px' }}
+            disabled={page >= totalPages - 1}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Sonraki ›
+          </button>
         </div>
       )}
 

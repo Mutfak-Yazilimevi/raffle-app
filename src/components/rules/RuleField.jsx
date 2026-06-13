@@ -1,4 +1,3 @@
-import React from 'react';
 
 export function RuleHelpText({ children }) {
   return <p className="rule-help">{children}</p>;

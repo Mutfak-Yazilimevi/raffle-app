@@ -454,6 +454,16 @@ body {
   border-color: rgba(15, 23, 42, 0.16);
 }
 
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #fff;
+  border: none;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+}
+
 .btn-success {
   background: linear-gradient(135deg, #10b981, #059669);
   color: white;
@@ -1035,6 +1045,24 @@ body {
 .announcement-card-chevron {
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+.announcement-card-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.announcement-card-delete:hover {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
 }
 
 .announcement-empty {

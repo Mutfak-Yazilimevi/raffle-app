@@ -1,4 +1,3 @@
-import React from 'react';
 import { CRITERIA_COPY, SECTION_COPY } from '../../constants/ruleHelpCopy';
 import {
   CriteriaCheckbox,

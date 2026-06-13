@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Award, Volume2, VolumeX, ChevronRight, RefreshCw, Trophy, Share2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { generateStartingStory } from '../utils/generateStartingStory';
@@ -61,7 +61,7 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, storyBackg
       const segment = buildNameLoop(drawingPool, IDLE_NAME_COUNT);
       return segment.length > 1 ? [...segment, ...segment] : segment;
     },
-    [drawingPool, currentStep.prizeIndex, currentStep.type, currentStep.index]
+    [drawingPool]
   );
 
   const idleLoopHeight = useMemo(
@@ -115,6 +115,7 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, storyBackg
     return () => {
       if (idleRafRef.current) cancelAnimationFrame(idleRafRef.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSpinning, winnerTicket, drawingPool.length, idleNames, getItemHeight]);
 
   // Ses Sentezleyicisi (Web Audio API)
@@ -398,7 +399,14 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, storyBackg
 
         {/* Slot Alanı */}
         <div style={{ maxWidth: '400px', margin: '0 auto 30px' }}>
-          <div className="slot-machine-container" ref={slotContainerRef}>
+          <div
+            className="slot-machine-container"
+            ref={slotContainerRef}
+            role="region"
+            aria-label="Çekiliş slotu"
+            aria-live="polite"
+            aria-atomic="true"
+          >
             <div className="slot-indicator" />
 
             {isSpinning ? (
@@ -493,24 +501,28 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, storyBackg
         {/* Kontrol Butonları */}
         <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
           {!winnerTicket && !isSpinning ? (
-            <button 
-              className="btn btn-primary pulse-glow" 
+            <button
+              type="button"
+              className="btn btn-primary pulse-glow"
               style={{ width: '100%', maxWidth: '260px', padding: '14px 28px', fontSize: '16px' }}
               onClick={startDraw}
               disabled={drawingPool.length === 0}
+              aria-label={currentStep.type === 'asil' ? 'Asil kazananı çek' : 'Yedek kazananı çek'}
             >
-              <RefreshCw className={isSpinning ? 'spin' : ''} size={18} /> 
+              <RefreshCw className={isSpinning ? 'spin' : ''} size={18} />
               {currentStep.type === 'asil' ? 'Asili Çek' : 'Yedeği Çek'}
             </button>
           ) : isSpinning ? (
-            <button className="btn btn-secondary" style={{ width: '100%', maxWidth: '260px' }} disabled>
+            <button type="button" className="btn btn-secondary" style={{ width: '100%', maxWidth: '260px' }} disabled aria-live="polite">
               Çekiliyor...
             </button>
           ) : (
-            <button 
-              className="btn btn-success" 
+            <button
+              type="button"
+              className="btn btn-success"
               style={{ width: '100%', maxWidth: '260px', padding: '14px 28px', fontSize: '16px' }}
               onClick={handleNextStep}
+              aria-label={isAllDone ? 'Sonuçları incele' : 'Sıradaki ödülü çek'}
             >
               {isAllDone ? 'Sonuçları İncele' : 'Sıradakini Çek'} <ChevronRight size={18} />
             </button>

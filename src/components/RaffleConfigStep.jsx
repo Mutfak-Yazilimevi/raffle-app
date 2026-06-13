@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Settings, Upload, ListFilter, Award, Image as ImageIcon, Trash2,
   FileText, Download, FolderOpen, Share2, ArrowRight, Megaphone, Save, Calendar,

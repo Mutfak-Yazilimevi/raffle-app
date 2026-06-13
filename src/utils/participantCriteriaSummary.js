@@ -122,7 +122,7 @@ function evaluateFollowCriterion(followStatus) {
   return { value: missing ? `Eksik: ${missing}` : 'Takip eksik', status: 'failed' };
 }
 
-function evaluateManualCriterion(label) {
+function evaluateManualCriterion() {
   return { value: 'Manuel kontrol', status: 'pending' };
 }
 

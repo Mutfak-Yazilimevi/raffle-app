@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Puzzle, Download, ExternalLink, ArrowLeft } from 'lucide-react';
 import { LINKS } from '../config';
 import { downloadChromeExtension } from '../utils/downloadExtension';

@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Award, ExternalLink, Settings, Play, Zap, Trophy, Megaphone, CheckCircle2, ArrowLeft,
 } from 'lucide-react';

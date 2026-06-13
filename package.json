@@ -1,13 +1,15 @@
 {
   "name": "raffle-app",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.4.8",
   "type": "module",
   "scripts": {
     "dev": "npm run zip-extension && vite",
     "zip-extension": "node scripts/zip-extension.mjs",
     "build": "npm run zip-extension && vite build && node scripts/ensure-extension-in-dist.mjs",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -24,6 +26,8 @@
     "eslint-plugin-react": "^7.34.2",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.7",
-    "vite": "^5.3.1"
+    "vite": "^5.3.1",
+    "vitest": "^2.0.0",
+    "happy-dom": "^14.0.0"
   }
 }

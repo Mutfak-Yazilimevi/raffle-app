@@ -474,3 +474,41 @@ export function clearSetupState(raffleId) {
   if (!id) return;
   localStorage.removeItem(setupStorageKey(id));
 }
+
+export async function deleteRaffle(raffleId) {
+  await ensureRegistryInitialized();
+  const registry = readRegistry();
+  if (!registry) return false;
+
+  registry.raffles = registry.raffles.filter((r) => r.id !== raffleId);
+
+  if (registry.activeId === raffleId) {
+    registry.activeId = registry.raffles[0]?.id || null;
+  }
+
+  writeRegistry(registry);
+  localStorage.removeItem(setupStorageKey(raffleId));
+
+  try {
+    const db = await openImagesDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(IMAGES_STORE, 'readwrite');
+      const store = tx.objectStore(IMAGES_STORE);
+      const prefix = `raffle:${raffleId}:`;
+      const req = store.getAllKeys();
+      req.onsuccess = () => {
+        for (const key of req.result) {
+          if (typeof key === 'string' && key.startsWith(prefix)) {
+            store.delete(key);
+          }
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (error) {
+    console.warn('Image cleanup on delete failed:', error);
+  }
+
+  return true;
+}

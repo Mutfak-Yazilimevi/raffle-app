@@ -27,7 +27,6 @@ export async function generateSetupStory(state) {
     requireComment: ruleFields.requireComment,
     requireLike: ruleFields.requireLike,
     requireSave: ruleFields.requireSave,
-    requireFollowAccounts: ruleFields.requireFollowAccounts,
     requireMentionRule: ruleFields.requireMentionRule,
     maxMentions: ruleFields.maxMentions,
     maxCommentsPerUser: ruleFields.maxCommentsPerUser,

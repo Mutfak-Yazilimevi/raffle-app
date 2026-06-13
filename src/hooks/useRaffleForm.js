@@ -23,7 +23,7 @@ import {
   userHasBlacklistedKeyword,
 } from '../utils/participantCriteriaSummary';
 import { normalizeImportedComments, getUniqueParticipantUsernames } from '../utils/commentParsing';
-import { resizeImageFromFile } from '../utils/resizeUploadedImage';
+import { resizeImageFromFile, resizeUploadedImage, recompressIfNeeded } from '../utils/resizeUploadedImage';
 
 import { normalizeBrand, EMPTY_BRAND_SCHEDULE } from '../utils/raffleSchedule';
 
@@ -259,6 +259,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     });
 
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRaffleId]);
 
   const recompressStoredImages = async (saved) => {
@@ -294,6 +295,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
       });
     }, 400);
     return () => window.clearTimeout(timeoutId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRaffleId, comments, brand, prizes, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist, requiredFollowAccounts, requireFollowAccounts, requireMentionRule, effectiveMinRequiredFollows, followVerification, participationCriteria, showPrizeProductsInResultsStory, storyBackgroundId]);
 
   useEffect(() => {
@@ -456,6 +458,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
       }
     });
     return tickets;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [comments, entryMethod, requireMentionRule, minMentions, maxMentions, maxCommentsPerUser, mentionMode, weightedEntry, uniqueMentions, keywordRequired, keywordBlacklist, userBlacklist, followRuleActive, followVerification]);
 
   const uniqueParticipantsCount = useMemo(
@@ -511,6 +514,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
         || b.commentCount - a.commentCount
         || a.username.localeCompare(b.username, 'tr')
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     comments, ticketsPool, followRuleActive, followVerification,
     participationCriteria, entryMethod, minMentions, mentionMode, weightedEntry, uniqueMentions,

@@ -1,8 +1,34 @@
-import React from 'react';
 import {
-  Trash2, CheckCircle, Info, Play, Share2, ArrowLeft, Puzzle, ExternalLink, ListOrdered, UserCheck,
+  Trash2, CheckCircle, Info, Play, Share2, ArrowLeft, Puzzle, ExternalLink, ListOrdered, UserCheck, Download,
 } from 'lucide-react';
 import OpenInstagramLink from './OpenInstagramLink';
+
+function exportParticipantsCSV(participantStats, activeCriteriaColumns) {
+  const headers = ['Sıra', 'Kullanıcı', ...activeCriteriaColumns.map((c) => c.label), 'Bilet', 'Durum'];
+  const rows = participantStats.map((person, i) => [
+    i + 1,
+    `@${person.username}`,
+    ...activeCriteriaColumns.map((col) => person.criteria?.cells?.[col.id]?.value ?? ''),
+    person.ticketCount,
+    person.ticketCount > 0 ? 'Geçerli' : 'Filtrelendi',
+  ]);
+
+  const escape = (v) => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const csv = [headers, ...rows].map((r) => r.map(escape).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'katilimcilar.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export default function RaffleCommentsStep({
   form,
@@ -138,9 +164,19 @@ export default function RaffleCommentsStep({
               )}
               <OpenInstagramLink postUrl={postUrl} size="compact" showIcon />
               {comments.length > 0 && (
-                <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={clearData}>
-                  <Trash2 size={14} /> Temizle
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 12px', fontSize: '12px' }}
+                    onClick={() => exportParticipantsCSV(participantStats, activeCriteriaColumns)}
+                  >
+                    <Download size={14} /> CSV İndir
+                  </button>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={clearData}>
+                    <Trash2 size={14} /> Temizle
+                  </button>
+                </>
               )}
             </div>
           </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Award, Compass, Puzzle, Megaphone } from 'lucide-react';
 import { LINKS } from './config';
 import { normalizeImportedComments } from './utils/commentParsing';
@@ -15,6 +15,7 @@ import {
   ensureRegistryInitialized,
   listRaffleEntries,
   createRaffle,
+  deleteRaffle,
   setActiveRaffleId,
   getActiveRaffleId,
   loadDrawResults,
@@ -157,6 +158,11 @@ export default function App() {
     setView('studio');
     setRaffleStep('config');
     setDrawStage('animation');
+  };
+
+  const handleDeleteRaffle = async (raffleId) => {
+    await deleteRaffle(raffleId);
+    await refreshRaffleList();
   };
 
   const handleLogoClick = () => {
@@ -314,6 +320,7 @@ export default function App() {
           <RaffleAnnouncement
             raffleEntries={raffleEntries}
             onCreateRaffle={handleCreateRaffle}
+            onDeleteRaffle={handleDeleteRaffle}
             onDefineConfig={(id) => openStudio('config', id)}
             onStartScheduled={(id) => openStudio('comments', id)}
           />

@@ -109,7 +109,14 @@ export function wrapText(ctx, text, maxWidth) {
  * Story üst bilgisi: Logo → Marka Adı → Çekiliş Adı
  * @returns {Promise<number>} alt içerik için başlangıç Y değeri
  */
+export async function awaitFonts() {
+  if (typeof document !== 'undefined' && document.fonts?.ready) {
+    await document.fonts.ready;
+  }
+}
+
 export async function drawStoryBrandHeader(ctx, brand, p, startY = 130, options = {}) {
+  await awaitFonts();
   const {
     logoMaxSize = 96,
     logoGap = 22,

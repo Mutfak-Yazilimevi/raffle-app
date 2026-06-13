@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Trophy, Download, Share2, RefreshCw, XCircle, ExternalLink } from 'lucide-react';
 import { generateResultsStory } from '../utils/generateResultsStory';
 import { parseFollowAccountList, isFollowRuleActive } from '../utils/followRules';
@@ -215,7 +215,7 @@ export default function RaffleResults({
           </p>
         ) : (
           <p style={{ fontStyle: 'italic', fontSize: isWinner ? '13px' : '12px', color: 'var(--text-muted)', background: isWinner ? 'var(--bg-muted)' : 'transparent', padding: isWinner ? '10px' : 0, borderRadius: '8px', border: isWinner ? '1px solid var(--glass-border)' : 'none', margin: 0 }}>
-            "{person.comment}"
+            &quot;{person.comment}&quot;
           </p>
         )}
 

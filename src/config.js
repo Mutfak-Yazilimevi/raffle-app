@@ -39,7 +39,3 @@ export function getExtensionDownloadUrls() {
   return [...new Set(urls)];
 }
 
-/** @deprecated getExtensionDownloadUrls kullanın */
-export function getExtensionDownloadUrl() {
-  return getExtensionDownloadUrls()[0];
-}
