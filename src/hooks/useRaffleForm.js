@@ -67,6 +67,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
   const [generatingSetupStory, setGeneratingSetupStory] = useState(false);
   const [generatingStartingStory, setGeneratingStartingStory] = useState(false);
   const [savingRaffle, setSavingRaffle] = useState(false);
+  const [postImportMessage, setPostImportMessage] = useState('');
 
   const configFileInputRef = useRef(null);
 
@@ -324,6 +325,45 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  useEffect(() => {
+    const onPostImport = async (event) => {
+      if (event.key !== 'raffle_post_import_result' || !event.newValue) return;
+      try {
+        const result = JSON.parse(event.newValue);
+        if (!result?.ok) return;
+
+        setBrand((prev) => ({
+          ...prev,
+          postUrl: result.postUrl || prev.postUrl,
+          name: result.brandName && !prev.name ? result.brandName : prev.name,
+        }));
+
+        if (result.imageDataUrl) {
+          try {
+            const resized = await resizeUploadedImage(result.imageDataUrl, 'prize');
+            setPrizes((prev) => prev.map((prize, i) =>
+              i === 0 && !prize.image ? { ...prize, image: resized } : prize,
+            ));
+          } catch (_) {
+            // image resize failed, not critical
+          }
+        }
+
+        setPostImportMessage(
+          result.brandName
+            ? `Post bilgileri dolduruldu — @${result.brandName}`
+            : 'Post bilgileri dolduruldu.',
+        );
+        localStorage.removeItem('raffle_post_import_result');
+      } catch (err) {
+        console.error('Post import result okunamadı:', err);
+      }
+    };
+
+    window.addEventListener('storage', onPostImport);
+    return () => window.removeEventListener('storage', onPostImport);
   }, []);
 
   useEffect(() => {
@@ -678,5 +718,6 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     handleSaveRaffle, handleExportConfigTxt, handleImportConfigTxt,
     handleGenerateSetupStory, handleGenerateStartingStory,
     configFileInputRef, buildSetupConfig, validateStart, resetForm,
+    postImportMessage, setPostImportMessage,
   };
 }

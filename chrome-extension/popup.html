@@ -160,6 +160,39 @@
       text-align: center;
       margin: 0;
     }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin: 0 0 8px;
+    }
+
+    .url-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-family: inherit;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-color);
+      outline: none;
+    }
+
+    .url-input:focus {
+      border-color: var(--primary);
+    }
+
+    .import-status {
+      display: none;
+      font-size: 11px;
+      margin: 6px 0 0;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -207,6 +240,15 @@
       <button id="btn-verify-follows" class="btn-secondary" style="width: 100%; margin-top: 8px;">
         Takip Şartlarını Doğrula
       </button>
+    </div>
+
+    <div id="post-import-section" style="display: none;">
+      <div class="status-card" style="margin-top: 0;">
+        <p class="section-label">Post&apos;tan Doldur</p>
+        <input id="post-url-input" type="url" class="url-input" placeholder="https://www.instagram.com/p/..." />
+        <button id="btn-import-post" class="btn-secondary" style="width: 100%; margin-top: 8px;">📋 Çekiliş Bilgilerini Doldur</button>
+        <p id="post-import-status" class="import-status"></p>
+      </div>
     </div>
 
     <p class="info-text">Not: Tarama bitince «Çekilişe Gönder» ile aktarın. Sayım bir süre artmazsa eklenti otomatik durur.</p>

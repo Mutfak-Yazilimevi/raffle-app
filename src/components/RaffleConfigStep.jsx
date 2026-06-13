@@ -17,6 +17,7 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
     handleSaveRaffle, generatingSetupStory, handleExportConfigTxt, handleImportConfigTxt,
     handleGenerateSetupStory, configFileInputRef,
     requireComment,
+    postImportMessage,
   } = form;
 
   const handleSaveClick = async () => {
@@ -55,7 +56,16 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
           />
           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
             Chrome eklentisi ve Yorumlar adımındaki &quot;Instagram&apos;ı Aç&quot; butonu bu adrese gider.
+            Eklentide &quot;Post&apos;tan Doldur&quot; bölümüne URL yapıştırarak bilgileri otomatik aktarabilirsiniz.
           </span>
+          {postImportMessage && (
+            <span
+              role="status"
+              style={{ display: 'block', marginTop: '6px', fontSize: '12px', color: 'var(--insta-green, #10b981)' }}
+            >
+              ✓ {postImportMessage}
+            </span>
+          )}
         </div>
 
         <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--glass-border)' }}>

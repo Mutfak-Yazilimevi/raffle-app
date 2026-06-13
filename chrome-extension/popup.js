@@ -220,6 +220,69 @@ async function setupFollowVerificationUI(elements) {
   };
 }
 
+async function setupPostImportSection(prefillUrl = null) {
+  const section = document.getElementById('post-import-section');
+  if (!section) return;
+
+  const targetTabId = appTabId || (await findAppTab())?.id;
+  if (!targetTabId) return;
+
+  section.style.display = 'block';
+
+  const urlInput = document.getElementById('post-url-input');
+  const btn = document.getElementById('btn-import-post');
+  const statusEl = document.getElementById('post-import-status');
+
+  if (prefillUrl) urlInput.value = prefillUrl;
+
+  btn.addEventListener('click', async () => {
+    const url = urlInput.value.trim();
+    if (!url) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Yükleniyor...';
+    statusEl.style.display = 'none';
+
+    chrome.runtime.sendMessage({ type: 'FETCH_POST_METADATA', url }, async (result) => {
+      btn.disabled = false;
+      btn.textContent = '📋 Çekiliş Bilgilerini Doldur';
+
+      if (chrome.runtime.lastError || !result?.ok) {
+        statusEl.textContent = result?.error || 'Post bilgileri alınamadı';
+        statusEl.style.color = '#ef4444';
+        statusEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: targetTabId },
+          func: (data) => {
+            try {
+              localStorage.setItem('raffle_post_import_result', JSON.stringify(data));
+              window.dispatchEvent(new StorageEvent('storage', {
+                key: 'raffle_post_import_result',
+                newValue: JSON.stringify(data),
+              }));
+            } catch (e) {
+              console.error('Post metadata yazılamadı:', e);
+            }
+          },
+          args: [result],
+        });
+        statusEl.textContent = result.brandName
+          ? `✓ @${result.brandName} bilgileri aktarıldı`
+          : '✓ Bilgiler aktarıldı';
+        statusEl.style.color = '#10b981';
+      } catch (_) {
+        statusEl.textContent = 'Uygulamaya aktarılamadı';
+        statusEl.style.color = '#ef4444';
+      }
+      statusEl.style.display = 'block';
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   connectPopupSession();
 
@@ -272,6 +335,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       followVerifyStatus,
       btnVerifyFollows,
     });
+    await setupPostImportSection();
     return;
   }
 
@@ -307,6 +371,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     followVerifyStatus,
     btnVerifyFollows,
   });
+
+  await setupPostImportSection(isInstagramPost ? tab.url : null);
 
   function applyScrapeUiState({ count, phase, expectedTotal }) {
     commentCountEl.textContent = count;

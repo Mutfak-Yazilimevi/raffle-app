@@ -364,6 +364,87 @@ async function runFollowVerification({
   return payload;
 }
 
+function decodeHtmlEntities(str) {
+  return str
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function extractOgMeta(html, property) {
+  const esc = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re1 = new RegExp(`<meta[^>]+property=["']${esc}["'][^>]+content=["']([^"']*?)["']`, 'i');
+  const re2 = new RegExp(`<meta[^>]+content=["']([^"']*?)["'][^>]+property=["']${esc}["']`, 'i');
+  const m = html.match(re1) || html.match(re2);
+  return m ? decodeHtmlEntities(m[1]) : null;
+}
+
+async function fetchPostMetadata(url) {
+  let html;
+  try {
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'tr,en;q=0.5',
+      },
+    });
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
+    html = await resp.text();
+  } catch (err) {
+    return { ok: false, error: err.message || 'Ağ hatası' };
+  }
+
+  const title = extractOgMeta(html, 'og:title');
+  const description = extractOgMeta(html, 'og:description');
+  const ogImageUrl = extractOgMeta(html, 'og:image');
+
+  if (!title && !description) {
+    return { ok: false, error: 'Post bilgileri bulunamadı (giriş gerekiyor olabilir)' };
+  }
+
+  // Instagram og:title formats:
+  // "Display Name (@username) • Instagram photos and videos"
+  // "Display Name (@username) on Instagram: \"caption\""
+  let brandName = null;
+  if (title) {
+    const m1 = title.match(/^(.+?)\s+\(@[^)]+\)/);
+    if (m1) {
+      brandName = m1[1].trim();
+    } else {
+      const m2 = title.match(/^@?(\S+)\s+[•·]/);
+      if (m2) brandName = m2[1].trim();
+    }
+  }
+
+  let imageDataUrl = null;
+  if (ogImageUrl) {
+    try {
+      const imgResp = await fetch(ogImageUrl);
+      if (imgResp.ok) {
+        const buf = await imgResp.arrayBuffer();
+        if (buf.byteLength <= 3 * 1024 * 1024) {
+          const uint8 = new Uint8Array(buf);
+          let bin = '';
+          for (let i = 0; i < uint8.length; i += 8192) {
+            bin += String.fromCharCode(...uint8.subarray(i, Math.min(i + 8192, uint8.length)));
+          }
+          const ct = imgResp.headers.get('content-type') || 'image/jpeg';
+          imageDataUrl = `data:${ct};base64,${btoa(bin)}`;
+        }
+      }
+    } catch (_) {
+      // image fetch failed, not critical
+    }
+  }
+
+  return { ok: true, postUrl: url, brandName, title, description, imageDataUrl };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'START_FOLLOW_VERIFICATION') {
     runFollowVerification(message)
@@ -376,6 +457,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.get(VERIFY_STORAGE_KEY, (data) => {
       sendResponse(data[VERIFY_STORAGE_KEY] || null);
     });
+    return true;
+  }
+
+  if (message.type === 'FETCH_POST_METADATA') {
+    fetchPostMetadata(message.url)
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;
   }
 
