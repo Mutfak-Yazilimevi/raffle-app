@@ -775,7 +775,6 @@ Sadece JSON döndür, başka açıklama ekleme.`;
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { maxOutputTokens: 4096, temperature: 0.2 },
-            thinkingConfig: { thinkingBudget: 0 },
           }),
         },
       );
