@@ -27,7 +27,7 @@ import { resizeImageFromFile, resizeUploadedImage, recompressIfNeeded } from '..
 
 import { normalizeBrand, EMPTY_BRAND_SCHEDULE } from '../utils/raffleSchedule';
 
-const EMPTY_BRAND = { name: '', logo: '', raffleName: '', postUrl: '', ...EMPTY_BRAND_SCHEDULE };
+const EMPTY_BRAND = { name: '', logo: '', raffleName: '', postUrl: '', postDescription: '', ...EMPTY_BRAND_SCHEDULE };
 const EMPTY_PRIZE = () => ({ id: Date.now(), name: '', image: '', winnerCount: 1, substituteCount: 1 });
 
 export function useRaffleForm({ importedComments, onClearImported, activeRaffleId }) {
@@ -68,6 +68,8 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
   const [generatingStartingStory, setGeneratingStartingStory] = useState(false);
   const [savingRaffle, setSavingRaffle] = useState(false);
   const [postImportMessage, setPostImportMessage] = useState('');
+  const [generatingWithAI, setGeneratingWithAI] = useState(false);
+  const [aiMessage, setAiMessage] = useState('');
 
   const configFileInputRef = useRef(null);
 
@@ -338,6 +340,7 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
           ...prev,
           postUrl: result.postUrl || prev.postUrl,
           name: result.brandName && !prev.name ? result.brandName : prev.name,
+          postDescription: result.description || prev.postDescription,
         }));
 
         if (result.imageDataUrl) {
@@ -674,6 +677,50 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     },
   });
 
+  const handleGenerateWithAI = async () => {
+    const apiKey = (localStorage.getItem('anthropic_api_key') || '').trim();
+    if (!apiKey) {
+      setAiMessage('Önce API anahtarı girin (⚙ AI Ayarı)');
+      return;
+    }
+    setGeneratingWithAI(true);
+    setAiMessage('');
+    try {
+      const parts = [];
+      if (brand.name) parts.push(`Marka: ${brand.name}`);
+      if (brand.postDescription) parts.push(`Gönderi: ${brand.postDescription.slice(0, 400)}`);
+      const contextStr = parts.length ? `\n\n${parts.join('\n')}` : '';
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 60,
+          messages: [{ role: 'user', content: `Instagram çekilişi için kısa, akılda kalıcı Türkçe bir çekiliş adı oluştur.${contextStr}\n\nSadece adı yaz, başka hiçbir şey ekleme.` }],
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      const name = data.content?.[0]?.text?.trim();
+      if (name) {
+        setBrand((prev) => ({ ...prev, raffleName: name }));
+        setAiMessage('✓ Oluşturuldu');
+      }
+    } catch (err) {
+      setAiMessage(err.message || 'Hata oluştu');
+    } finally {
+      setGeneratingWithAI(false);
+    }
+  };
+
   const validateStart = () => {
     if (ticketsPool.length === 0) {
       alert('Çekiliş havuzunda geçerli katılımcı bulunamadı. Lütfen yorum ekleyin veya kuralları gevşetin.');
@@ -719,5 +766,6 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     handleGenerateSetupStory, handleGenerateStartingStory,
     configFileInputRef, buildSetupConfig, validateStart, resetForm,
     postImportMessage, setPostImportMessage,
+    generatingWithAI, aiMessage, setAiMessage, handleGenerateWithAI,
   };
 }

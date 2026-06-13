@@ -29,6 +29,7 @@ export function normalizeBrand(brand = {}) {
     logo: brand.logo || '',
     raffleName: brand.raffleName || '',
     postUrl: brand.postUrl || '',
+    postDescription: brand.postDescription || '',
     ...EMPTY_BRAND_SCHEDULE,
     ...pickScheduleFields(brand),
   };

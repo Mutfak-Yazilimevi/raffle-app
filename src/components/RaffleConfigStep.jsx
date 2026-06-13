@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import {
   Settings, Upload, ListFilter, Award, Image as ImageIcon, Trash2,
-  FileText, Download, FolderOpen, Share2, ArrowRight, Megaphone, Save, Calendar,
+  FileText, Download, FolderOpen, Share2, ArrowRight, Megaphone, Save, Calendar, Sparkles, KeyRound,
 } from 'lucide-react';
 import StoryBackgroundPicker from './StoryBackgroundPicker';
 import ParticipationCriteriaSection from './ParticipationCriteriaSection';
@@ -18,7 +19,11 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
     handleGenerateSetupStory, configFileInputRef,
     requireComment,
     postImportMessage,
+    generatingWithAI, aiMessage, setAiMessage, handleGenerateWithAI,
   } = form;
+
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('anthropic_api_key') || '');
+  const [showApiKey, setShowApiKey] = useState(false);
 
   const handleSaveClick = async () => {
     const saved = await handleSaveRaffle();
@@ -42,8 +47,24 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
           <Settings className="gradient-text" /> Marka ve Çekiliş Bilgileri
         </h3>
         <div className="form-group">
-          <label className="form-label">Çekiliş Adı</label>
+          <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Çekiliş Adı</span>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ padding: '4px 10px', fontSize: '11px', gap: '4px', borderRadius: '6px' }}
+              onClick={() => { setAiMessage(''); handleGenerateWithAI(); }}
+              disabled={generatingWithAI}
+            >
+              <Sparkles size={12} /> {generatingWithAI ? 'Oluşturuluyor…' : 'AI ile Oluştur'}
+            </button>
+          </label>
           <input type="text" className="form-input" placeholder="Örn: Yılbaşı Büyük Çekilişi" value={brand.raffleName} onChange={(e) => setBrand({ ...brand, raffleName: e.target.value })} />
+          {aiMessage && (
+            <span style={{ fontSize: '11px', color: aiMessage.startsWith('✓') ? 'var(--insta-green, #10b981)' : '#ef4444' }}>
+              {aiMessage}
+            </span>
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Instagram Gönderi Linki (Opsiyonel)</label>
@@ -129,6 +150,37 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
               </button>
             )}
           </div>
+        </div>
+
+        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--glass-border)' }}>
+          <button
+            type="button"
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '6px' }}
+            onClick={() => setShowApiKey((v) => !v)}
+          >
+            <KeyRound size={13} /> AI Ayarı {showApiKey ? '▲' : '▼'}
+          </button>
+          {showApiKey && (
+            <div className="form-group" style={{ marginTop: '10px', marginBottom: 0 }}>
+              <label className="form-label" style={{ fontSize: '12px' }}>Anthropic API Anahtarı</label>
+              <input
+                type="password"
+                className="form-input"
+                placeholder="sk-ant-api03-…"
+                value={apiKey}
+                onChange={(e) => {
+                  setApiKey(e.target.value);
+                  localStorage.setItem('anthropic_api_key', e.target.value);
+                }}
+              />
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                Tarayıcınızda saklanır.{' '}
+                <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--insta-blue)' }}>
+                  console.anthropic.com
+                </a>{' '}adresinden API anahtarı alın.
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
