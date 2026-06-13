@@ -789,13 +789,18 @@ Sadece JSON döndür, başka açıklama ekleme.`;
       if (!raw) throw new Error('Yanıt boş');
 
       let parsed;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (_) {
-        const m = raw.match(/```(?:json)?\s*([\s\S]+?)```/);
-        if (m) parsed = JSON.parse(m[1]);
-        else throw new Error('JSON parse hatası');
+      const tryParse = (s) => { try { return JSON.parse(s); } catch (_) { return null; } };
+      parsed = tryParse(raw);
+      if (!parsed) {
+        const mdMatch = raw.match(/```(?:json)?\s*([\s\S]+?)```/);
+        if (mdMatch) parsed = tryParse(mdMatch[1].trim());
       }
+      if (!parsed) {
+        const start = raw.indexOf('{');
+        const end = raw.lastIndexOf('}');
+        if (start !== -1 && end > start) parsed = tryParse(raw.slice(start, end + 1));
+      }
+      if (!parsed) throw new Error('JSON parse hatası — Gemini yanıtı: ' + raw.slice(0, 120));
 
       setBrand((prev) => ({
         ...prev,
