@@ -719,6 +719,137 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     }
   };
 
+  const handleParsePostWithAI = async () => {
+    const apiKey = (localStorage.getItem('gemini_api_key') || import.meta.env.VITE_GEMINI_API_KEY || '').trim();
+    if (!apiKey) { setAiMessage('Önce API anahtarı girin (⚙ AI Ayarı)'); return; }
+    if (!brand.postUrl && !brand.postDescription) {
+      setAiMessage('Gönderi linki veya açıklama girilmemiş');
+      return;
+    }
+
+    setGeneratingWithAI(true);
+    setAiMessage('Gönderi analiz ediliyor…');
+
+    try {
+      let description = brand.postDescription;
+
+      if (!description && brand.postUrl) {
+        const extId = localStorage.getItem('raffle_extension_id');
+        if (extId && window.chrome?.runtime?.sendMessage) {
+          const result = await new Promise((resolve) => {
+            window.chrome.runtime.sendMessage(extId, { type: 'FETCH_POST_METADATA', url: brand.postUrl }, (res) => {
+              resolve(res || { ok: false });
+            });
+          });
+          if (result?.ok) {
+            description = result.description || '';
+            setBrand((prev) => ({
+              ...prev,
+              postDescription: description,
+              name: prev.name || result.brandName || '',
+            }));
+            if (result.imageDataUrl) {
+              const resized = await resizeUploadedImage(result.imageDataUrl, 'prize');
+              setPrizes((prev) => prev.map((p, i) => (i === 0 && !p.image ? { ...p, image: resized } : p)));
+            }
+          }
+        }
+      }
+
+      if (!description) {
+        setAiMessage('Post açıklaması alınamadı. Önce eklentide "Post\'tan Doldur" yapın.');
+        return;
+      }
+
+      const prompt = `Aşağıdaki Instagram çekiliş gönderisi metnini analiz et ve JSON formatında bilgileri çıkar.
+
+Gönderi metni:
+${description.slice(0, 1500)}
+
+Aşağıdaki JSON yapısını doldur. Bilinmeyenler için null kullan. Tarihler YYYY-MM-DD, saatler HH:MM formatında:
+{
+  "raffleName": "çekilişin kısa adı",
+  "prizes": [{"name": "ödül adı", "winnerCount": 1, "substituteCount": 1}],
+  "requireComment": true,
+  "requireLike": false,
+  "requireSave": false,
+  "requireFollowAccounts": true,
+  "followAccounts": "@hesap1, @hesap2",
+  "requireMentionRule": false,
+  "minMentions": 1,
+  "keywordRequired": "",
+  "entryEndDate": null,
+  "drawDate": null,
+  "drawTime": null
+}
+
+Sadece JSON döndür, başka açıklama ekleme.`;
+
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 600, temperature: 0.2, responseMimeType: 'application/json' },
+          }),
+        },
+      );
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      if (!raw) throw new Error('Yanıt boş');
+
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (_) {
+        const m = raw.match(/```(?:json)?\s*([\s\S]+?)```/);
+        if (m) parsed = JSON.parse(m[1]);
+        else throw new Error('JSON parse hatası');
+      }
+
+      setBrand((prev) => ({
+        ...prev,
+        ...(parsed.raffleName ? { raffleName: parsed.raffleName } : {}),
+        ...(parsed.entryEndDate ? { entryEndDate: parsed.entryEndDate } : {}),
+        ...(parsed.drawDate ? { drawDate: parsed.drawDate } : {}),
+        ...(parsed.drawTime ? { drawTime: parsed.drawTime } : {}),
+      }));
+
+      if (Array.isArray(parsed.prizes) && parsed.prizes.length > 0) {
+        setPrizes(parsed.prizes.map((p, i) => ({
+          id: Date.now() + i,
+          name: p.name || '',
+          image: '',
+          winnerCount: Math.max(1, parseInt(p.winnerCount, 10) || 1),
+          substituteCount: Math.max(0, parseInt(p.substituteCount, 10) || 1),
+        })));
+      }
+
+      if (parsed.requireComment != null) setRequireComment(Boolean(parsed.requireComment));
+      if (parsed.requireLike != null) setRequireLike(Boolean(parsed.requireLike));
+      if (parsed.requireSave != null) setRequireSave(Boolean(parsed.requireSave));
+      if (parsed.requireFollowAccounts != null) setRequireFollowAccounts(Boolean(parsed.requireFollowAccounts));
+      if (parsed.followAccounts) setRequiredFollowAccounts(parsed.followAccounts);
+      if (parsed.requireMentionRule != null) setRequireMentionRule(Boolean(parsed.requireMentionRule));
+      if (parsed.minMentions != null) setMinMentions(Math.max(0, parseInt(parsed.minMentions, 10) || 0));
+      if (parsed.keywordRequired) setKeywordRequired(parsed.keywordRequired);
+
+      setAiMessage('✓ Form dolduruldu');
+    } catch (err) {
+      setAiMessage(err.message || 'Hata oluştu');
+    } finally {
+      setGeneratingWithAI(false);
+    }
+  };
+
   const validateStart = () => {
     if (ticketsPool.length === 0) {
       alert('Çekiliş havuzunda geçerli katılımcı bulunamadı. Lütfen yorum ekleyin veya kuralları gevşetin.');
@@ -764,6 +895,6 @@ export function useRaffleForm({ importedComments, onClearImported, activeRaffleI
     handleGenerateSetupStory, handleGenerateStartingStory,
     configFileInputRef, buildSetupConfig, validateStart, resetForm,
     postImportMessage, setPostImportMessage,
-    generatingWithAI, aiMessage, setAiMessage, handleGenerateWithAI,
+    generatingWithAI, aiMessage, setAiMessage, handleGenerateWithAI, handleParsePostWithAI,
   };
 }

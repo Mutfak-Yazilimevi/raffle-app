@@ -19,7 +19,7 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
     handleGenerateSetupStory, configFileInputRef,
     requireComment,
     postImportMessage,
-    generatingWithAI, aiMessage, setAiMessage, handleGenerateWithAI,
+    generatingWithAI, aiMessage, setAiMessage, handleGenerateWithAI, handleParsePostWithAI,
   } = form;
 
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
@@ -79,6 +79,15 @@ export default function RaffleConfigStep({ form, onNext, onBackToAnnouncement, o
             Chrome eklentisi ve Yorumlar adımındaki &quot;Instagram&apos;ı Aç&quot; butonu bu adrese gider.
             Eklentide &quot;Post&apos;tan Doldur&quot; bölümüne URL yapıştırarak bilgileri otomatik aktarabilirsiniz.
           </span>
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ marginTop: '8px', width: '100%', fontSize: '12px', gap: '6px' }}
+            onClick={() => { setAiMessage(''); handleParsePostWithAI(); }}
+            disabled={generatingWithAI || (!brand.postUrl && !brand.postDescription)}
+          >
+            <Sparkles size={13} /> {generatingWithAI ? 'Analiz ediliyor…' : 'AI ile Formu Doldur'}
+          </button>
           {postImportMessage && (
             <span
               role="status"

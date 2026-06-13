@@ -329,6 +329,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnStart.disabled = true;
     btnExport.disabled = true;
     appTabId = tab.id;
+    // Write extension ID so the app can call back via chrome.runtime.sendMessage
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (extId) => { try { localStorage.setItem('raffle_extension_id', extId); } catch (_) {} },
+      args: [chrome.runtime.id],
+    }).catch(() => {});
     await setupFollowVerificationUI({
       followSection,
       followRuleSummary,

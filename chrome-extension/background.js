@@ -470,6 +470,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  if (message.type === 'FETCH_POST_METADATA') {
+    fetchPostMetadata(message.url)
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+  return false;
+});
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'raffle-popup') return;
 
