@@ -1,6 +1,6 @@
 # PRD-01 — Rehberli Kurulum Sihirbazı
 
-> Durum: Taslak · 2026-06-13  
+> Durum: Tamamlandı · 2026-06-15  
 > Öncelik: P1 (Top 5 #1)
 
 ---
