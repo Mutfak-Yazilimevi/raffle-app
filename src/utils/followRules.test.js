@@ -5,6 +5,7 @@ import {
   getEffectiveMinRequiredFollows,
   evaluateFollowRequirement,
   getFollowRuleSummary,
+  buildFollowVerifyRequest,
   normalizeFollowVerificationResults,
 } from './followRules';
 
@@ -145,5 +146,88 @@ describe('normalizeFollowVerificationResults', () => {
     };
     const result = normalizeFollowVerificationResults(payload);
     expect(result.user.verified).toBe(false);
+  });
+
+  it('sets verified=false when error is set', () => {
+    const payload = {
+      results: {
+        user: { followed: [], missing: [], meetsRequirement: false, error: 'profile_private' },
+      },
+    };
+    const result = normalizeFollowVerificationResults(payload);
+    expect(result.user.verified).toBe(false);
+  });
+
+  it('sets verified=false when followed/missing arrays are absent (eklenti veri göndermedi)', () => {
+    // ok alanı yok, followed/missing yok -> doğrulama tamamlanmamış
+    const payload = {
+      results: {
+        user: { meetsRequirement: false },
+      },
+    };
+    const result = normalizeFollowVerificationResults(payload);
+    expect(result.user.verified).toBe(false);
+  });
+
+  it('sets verified=true when followed/missing present and no error', () => {
+    const payload = {
+      results: {
+        user: { followed: ['mutfak'], missing: [], meetsRequirement: true },
+      },
+    };
+    const result = normalizeFollowVerificationResults(payload);
+    expect(result.user.verified).toBe(true);
+  });
+
+  it('accepts flat payload (no results wrapper)', () => {
+    const payload = {
+      user1: { followed: ['mutfak'], missing: [], meetsRequirement: true },
+    };
+    const result = normalizeFollowVerificationResults(payload);
+    expect(result).toHaveProperty('user1');
+    expect(result.user1.verified).toBe(true);
+  });
+
+  it('normalizes followed/missing account names to lowercase', () => {
+    const payload = {
+      results: {
+        user: { followed: ['MUTFAK', 'Yemek'], missing: ['TATLI'], meetsRequirement: false },
+      },
+    };
+    const result = normalizeFollowVerificationResults(payload);
+    expect(result.user.followed).toEqual(['mutfak', 'yemek']);
+    expect(result.user.missing).toEqual(['tatli']);
+  });
+});
+
+describe('buildFollowVerifyRequest', () => {
+  it('normalizes participant usernames to lowercase and strips @', () => {
+    const req = buildFollowVerifyRequest(['@Alice', 'BOB', '@Charlie'], 'mutfak', true);
+    expect(req.participants).toContain('alice');
+    expect(req.participants).toContain('bob');
+    expect(req.participants).toContain('charlie');
+  });
+
+  it('deduplicates participants', () => {
+    const req = buildFollowVerifyRequest(['alice', 'Alice', '@alice'], 'mutfak', true);
+    expect(req.participants).toHaveLength(1);
+  });
+
+  it('strips @ from requiredFollowAccounts', () => {
+    const req = buildFollowVerifyRequest(['alice'], '@mutfak,@yemek', true);
+    expect(req.requiredFollowAccounts).toContain('mutfak');
+    expect(req.requiredFollowAccounts).toContain('yemek');
+    expect(req.requiredFollowAccounts.every((a) => !a.startsWith('@'))).toBe(true);
+  });
+
+  it('sets minRequiredFollows to account count', () => {
+    const req = buildFollowVerifyRequest(['alice'], 'mutfak,yemek,tatli', true);
+    expect(req.minRequiredFollows).toBe(3);
+  });
+
+  it('sets status to pending and includes requestId', () => {
+    const req = buildFollowVerifyRequest(['alice'], 'mutfak', true);
+    expect(req.status).toBe('pending');
+    expect(typeof req.requestId).toBe('number');
   });
 });

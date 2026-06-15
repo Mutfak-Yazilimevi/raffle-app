@@ -1,4 +1,20 @@
 // Instagram Çekiliş Yardımcısı - Content Script
+//
+// DOM Selector Dayanıklılık Notu (Son doğrulama: 2026-06)
+// Bu script Instagram'ın semantic HTML yapısına dayanır; obfuscated class adlarına değil.
+// Kullanılan temel selector'lar:
+//   - article                  → post konteyneri
+//   - div[role="dialog"]       → expanded post / lightbox
+//   - span[dir="auto"]         → yorum metni ve kullanıcı adı
+//   - [aria-label]             → buton etiketleri (beğen, yanıtla, daha fazla yorum)
+//   - a[href^="/"]             → kullanıcı profil linkleri
+//   - ul, [role="list"]        → yorum listesi
+//
+// Instagram DOM değişiklik belirtileri:
+//   - Yorumlar boş çıkıyorsa: span[dir="auto"] seçicisi değişmiş olabilir
+//   - "Daha fazla yorum" butonu bulunamıyorsa: aria-label pattern'ları değişmiş olabilir
+//   - Popup açılmıyorsa: article veya dialog role'ü farklılaşmış olabilir
+//   - Kullanıcı adı boş geliyorsa: profil link yapısı (a[href^="/"]) değişmiş olabilir
 
 const SKIP_USERNAMES = new Set([
   'explore', 'accounts', 'direct', 'reels', 'stories', 'p', 'reel', 'tags', 'locations', 'about', 'legal',
@@ -77,6 +93,14 @@ let observedCommentUl = null;
 let commentsList = [];
 let seenCommentIds = new Set();
 let seenDomKeys = new Set();
+let repliesList = [];
+let seenReplyIds = new Set();
+
+// Post sahibini URL'den tespit et: instagram.com/username/reel/... veya /p/...
+function getPostOwnerUsername() {
+  const match = window.location.pathname.match(/^\/([^/]+)\/(?:reel|p|tv)\//i);
+  return match ? match[1].toLowerCase() : null;
+}
 let commentUl = null;
 let scrollContainer = null;
 let loadMoreRoot = null;
@@ -385,11 +409,25 @@ function getStoredCommentCount() {
   return getFinalizedCommentCount();
 }
 
+function addReply(username, text, { commentId = null, parentCommentId = null } = {}) {
+  const trimmed = (text || '').trim();
+  if (!username || !trimmed || isNoise(trimmed)) return false;
+  if (username.toLowerCase() === getPostOwnerUsername()) return false;
+  const id = commentId ? String(commentId) : null;
+  if (id) {
+    if (seenReplyIds.has(id)) return false;
+    seenReplyIds.add(id);
+  }
+  repliesList.push({ username: username.toLowerCase(), text: trimmed, id: id || undefined, parentCommentId: parentCommentId ? String(parentCommentId) : null });
+  return true;
+}
+
 function addComment(username, text, options = {}) {
   if (options.isReply) return false;
 
   const trimmed = (text || '').trim();
   if (!username || !trimmed || isNoise(trimmed)) return false;
+  if (username.toLowerCase() === getPostOwnerUsername()) return false;
 
   const commentId = options.commentId ? String(options.commentId) : null;
   if (commentId) {
@@ -522,17 +560,25 @@ function isReplyCommentNode(node) {
   return /child|reply|subcomment/i.test(typeName) && /comment/i.test(typeName);
 }
 
-function ingestCommentNode(node) {
-  if (isReplyCommentNode(node)) return;
-
+function ingestCommentNode(node, isFromReplyBranch = false) {
   const username =
     node?.user?.username
     || node?.owner?.username
     || node?.commenter?.username
     || node?.from?.username;
-
   const text = node?.text || node?.comment_text || node?.content;
   const commentId = node?.pk || node?.id;
+
+  if (isReplyCommentNode(node) || isFromReplyBranch) {
+    const parentCommentId =
+      node?.parent_comment_id
+      || node?.parent_id
+      || node?.replied_to_comment_id
+      || null;
+    addReply(username, text, { commentId, parentCommentId });
+    return;
+  }
+
   if (addComment(username, text, { commentId, isReply: false })) notifyPopup();
 }
 
@@ -550,18 +596,16 @@ function walkForNetworkComments(value, depth = 0, parentKey = '', inReplyBranch 
 
   if (typeof value !== 'object') return;
 
-  if (!inReplyBranch) {
-    if (value.node) ingestCommentNode(value.node);
+  if (value.node) ingestCommentNode(value.node, inReplyBranch);
 
-    if (Array.isArray(value.edges)) {
-      for (const edge of value.edges) {
-        if (edge?.node) ingestCommentNode(edge.node);
-      }
+  if (Array.isArray(value.edges)) {
+    for (const edge of value.edges) {
+      if (edge?.node) ingestCommentNode(edge.node, inReplyBranch);
     }
+  }
 
-    if (Array.isArray(value.items)) {
-      for (const item of value.items) ingestCommentNode(item);
-    }
+  if (Array.isArray(value.items)) {
+    for (const item of value.items) ingestCommentNode(item, inReplyBranch);
   }
 
   for (const key of Object.keys(value)) {
@@ -730,12 +774,20 @@ function scrapeCommentsByHeuristic(root) {
 
     const row = findCommentRowFromLink(link);
     if (!row || row.closest('header, nav, [role="navigation"]')) continue;
-    if (isReplyCommentRow(row)) continue;
 
     const textEl = row.querySelector('span[dir="auto"], [dir="auto"]');
     if (!textEl) continue;
-
     const text = textEl.textContent.trim();
+    if (!text) continue;
+
+    if (isReplyCommentRow(row)) {
+      const item = row.matches('li, [role="listitem"]') ? row : row.closest('li, [role="listitem"]');
+      const parentItem = item?.parentElement?.closest('li, [role="listitem"]');
+      const parentCommentId = parentItem ? extractCommentIdFromRow(parentItem) : null;
+      addReply(username, text, { commentId: extractCommentIdFromRow(row), parentCommentId });
+      continue;
+    }
+
     const commentId = extractCommentIdFromRow(row);
     addComment(username, text, {
       commentId,
@@ -1536,6 +1588,8 @@ function resetState() {
   commentsList = [];
   seenCommentIds = new Set();
   seenDomKeys = new Set();
+  repliesList = [];
+  seenReplyIds = new Set();
   commentUl = null;
   scrollContainer = null;
   loadMoreRoot = null;
@@ -1567,6 +1621,63 @@ function getCommentsArray() {
     id,
     isReply: Boolean(isReply),
   }));
+}
+
+function getRepliesArray() {
+  return repliesList.map(({ username, text, id, parentCommentId }) => ({
+    username,
+    text,
+    id,
+    parentCommentId: parentCommentId || null,
+    isReply: true,
+  }));
+}
+
+function shortcodeToMediaId(shortcode) {
+  const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let n = BigInt(0);
+  for (const c of shortcode) {
+    const idx = ALPHABET.indexOf(c);
+    if (idx < 0) return null;
+    n = n * 64n + BigInt(idx);
+  }
+  return n.toString();
+}
+
+function getPostShortcode() {
+  const m = location.pathname.match(/\/(?:p|reel|tv)\/([^/?#]+)/);
+  return m ? m[1] : null;
+}
+
+async function fetchLikers() {
+  const shortcode = getPostShortcode();
+  if (!shortcode) return [];
+  const mediaId = shortcodeToMediaId(shortcode);
+  if (!mediaId) return [];
+
+  const likers = [];
+  let nextMaxId = null;
+
+  for (let page = 0; page < 30; page++) {
+    const qs = nextMaxId ? `?max_id=${encodeURIComponent(nextMaxId)}` : '';
+    try {
+      const resp = await fetch(`https://i.instagram.com/api/v1/media/${mediaId}/likers/${qs}`, {
+        credentials: 'include',
+        headers: { 'X-IG-App-ID': '936619743392459', Accept: 'application/json' },
+      });
+      if (!resp.ok) break;
+      const data = await resp.json();
+      for (const user of data.users || []) {
+        if (user.username) likers.push(user.username.toLowerCase());
+      }
+      nextMaxId = data.next_max_id || null;
+      if (!nextMaxId) break;
+    } catch (_) {
+      break;
+    }
+  }
+
+  return likers;
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -1610,7 +1721,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.type === 'GET_COMMENTS') {
     scrapeVisibleComments(true);
     scrapeEmbeddedPageData();
-    sendResponse({ comments: getCommentsArray() });
+    fetchLikers()
+      .then((likers) => sendResponse({ comments: getCommentsArray(), replies: getRepliesArray(), likers, postOwner: getPostOwnerUsername() }))
+      .catch(() => sendResponse({ comments: getCommentsArray(), replies: getRepliesArray(), likers: [], postOwner: getPostOwnerUsername() }));
   } else if (request.type === 'VERIFY_PARTICIPANT_FOLLOWS') {
     const verifyFn = window.__raffleFollowVerify?.verifyParticipantFollowsRequired;
     if (!verifyFn) {

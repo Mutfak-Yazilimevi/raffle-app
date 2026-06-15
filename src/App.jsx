@@ -28,6 +28,8 @@ export default function App() {
   const [raffleStep, setRaffleStep] = useState('config');
   const [drawStage, setDrawStage] = useState('animation');
   const [importedComments, setImportedComments] = useState([]);
+  const [importedLikers, setImportedLikers] = useState([]);
+  const [importedReplies, setImportedReplies] = useState([]);
   const [activeRaffleId, setActiveRaffleIdState] = useState(null);
   const [raffleEntries, setRaffleEntries] = useState([]);
   const [registryReady, setRegistryReady] = useState(false);
@@ -48,10 +50,14 @@ export default function App() {
   const handleClearImported = () => {
     localStorage.removeItem('instagram_comments_import');
     setImportedComments([]);
+    setImportedLikers([]);
+    setImportedReplies([]);
   };
 
   const form = useRaffleForm({
     importedComments,
+    importedLikers,
+    importedReplies,
     onClearImported: handleClearImported,
     activeRaffleId: registryReady ? activeRaffleId : null,
   });
@@ -102,9 +108,16 @@ export default function App() {
       const data = localStorage.getItem('instagram_comments_import');
       if (!data) return;
       try {
-        const comments = normalizeImportedComments(JSON.parse(data));
+        const parsed = JSON.parse(data);
+        // Support both legacy flat array and new { comments, likers } format
+        const rawComments = Array.isArray(parsed) ? parsed : (parsed?.comments || []);
+        const rawLikers = Array.isArray(parsed) ? [] : (parsed?.likers || []);
+        const rawReplies = Array.isArray(parsed) ? [] : (parsed?.replies || []);
+        const comments = normalizeImportedComments(rawComments);
         if (comments.length > 0) {
           setImportedComments(comments);
+          setImportedLikers(rawLikers);
+          setImportedReplies(rawReplies);
           openStudio('comments');
         }
       } catch (e) {
@@ -202,7 +215,7 @@ export default function App() {
           padding: '16px 24px',
         }}
       >
-        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+        <div className="app-header-inner">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }} onClick={handleLogoClick}>
             <div
               style={{
@@ -228,10 +241,12 @@ export default function App() {
           </div>
 
           {view === 'studio' && (
-            <StepProgress currentStep={currentProgressStep} />
+            <div className="header-step-progress">
+              <StepProgress currentStep={currentProgressStep} />
+            </div>
           )}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div className="app-header-nav">
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: 'var(--bg-inset)', padding: '6px 12px', borderRadius: '50px', border: '1px solid var(--glass-border)' }}>
               <span style={{ color: 'var(--text-muted)' }}>Aşama:</span>
               <strong style={{ color: 'var(--text-main)' }}>{stageLabel}</strong>
@@ -315,7 +330,7 @@ export default function App() {
         </div>
       </header>
 
-      <main style={{ flexGrow: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '30px 0', width: '100%' }}>
+      <main className="app-main">
         {view === 'announcement' && (
           <RaffleAnnouncement
             raffleEntries={raffleEntries}
@@ -368,6 +383,7 @@ export default function App() {
             showPrizeProductsInResultsStory={Boolean(raffleConfig.rules?.showPrizeProductsInResultsStory)}
             storyBackgroundId={raffleConfig.rules?.storyBackgroundId}
             rules={raffleConfig.rules || {}}
+            completedAt={displayResults?.completedAt || results?.completedAt}
             onReset={handleReset}
             onBackToAnnouncement={goToAnnouncement}
           />

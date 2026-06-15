@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Trophy, Download, Share2, RefreshCw, XCircle, ExternalLink } from 'lucide-react';
+import { Trophy, Download, Share2, RefreshCw, XCircle, ExternalLink, FileCheck } from 'lucide-react';
 import { generateResultsStory } from '../utils/generateResultsStory';
 import { parseFollowAccountList, isFollowRuleActive } from '../utils/followRules';
 import { getWinnerVerificationChecklist } from '../utils/participationCriteria';
+import { downloadCertificate } from '../utils/generateCertificate';
 
 export default function RaffleResults({
   winners: initialWinners,
@@ -12,6 +13,7 @@ export default function RaffleResults({
   showPrizeProductsInResultsStory = false,
   storyBackgroundId,
   rules = {},
+  completedAt,
   onReset,
   onBackToAnnouncement,
 }) {
@@ -307,6 +309,12 @@ export default function RaffleResults({
           </label>
           <button className="btn btn-secondary" onClick={exportToCSV}>
             <Download size={16} /> CSV İndir
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => downloadCertificate({ brand, prizes, rules, winners, substitutes, completedAt })}
+          >
+            <FileCheck size={16} /> Sertifika İndir
           </button>
           <button className="btn btn-primary" onClick={generateStoryImage} disabled={generatingStory}>
             <Share2 size={16} /> {generatingStory ? 'Oluşturuluyor...' : 'Story Görseli Oluştur 🚀'}

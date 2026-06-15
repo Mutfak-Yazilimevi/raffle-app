@@ -133,6 +133,7 @@ export function buildParticipantCriteriaSummary(userData, rules, options = {}) {
     followStatus = null,
     blacklistedUser = false,
     keywordBlocked = false,
+    liked = null,
   } = options;
 
   const cells = {};
@@ -156,7 +157,13 @@ export function buildParticipantCriteriaSummary(userData, rules, options = {}) {
         cells.follow = evaluateFollowCriterion(followStatus);
         break;
       case 'like':
-        cells.like = evaluateManualCriterion('Beğeni');
+        if (liked === true) {
+          cells.like = { value: 'Beğendi ✓', status: 'passed' };
+        } else if (liked === false) {
+          cells.like = { value: 'Beğenmedi', status: 'failed' };
+        } else {
+          cells.like = evaluateManualCriterion('Beğeni');
+        }
         break;
       case 'save':
         cells.save = evaluateManualCriterion('Kaydet');

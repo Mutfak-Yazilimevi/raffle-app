@@ -1,10 +1,5 @@
-import { COMMENT_BASELINE, ENTRY_METHOD_HELP, ENTRY_METHOD_OPTIONS } from '../../constants/ruleHelpCopy';
-import {
-  FormFieldHelp,
-  RuleBaselineCard,
-  RuleOptionHelp,
-  RuleToggleGroup,
-} from './RuleField';
+import { ENTRY_METHOD_OPTIONS } from '../../constants/ruleHelpCopy';
+import { RuleOptionHelp, RuleToggleGroup } from './RuleField';
 
 export default function EntryMethodSection({
   entryMethod,
@@ -25,31 +20,18 @@ export default function EntryMethodSection({
   };
 
   return (
-    <>
-      <RuleBaselineCard>
-        {COMMENT_BASELINE}
-      </RuleBaselineCard>
-
-      <div className="form-group rule-entry-method">
-        <label className="form-label">Katılım hak tipi</label>
-        <FormFieldHelp>{ENTRY_METHOD_HELP}</FormFieldHelp>
-        <RuleToggleGroup
-          value={entryMethod}
-          onChange={handleEntryMethodChange}
-          options={entryOptions}
-        />
-        {ENTRY_METHOD_OPTIONS.map((option) => (
-          <RuleOptionHelp
-            key={option.value}
-            selected={option.value === 'one_per_user'
-              ? entryMethod === 'one_per_user' && !weightedEntry
-              : entryMethod === option.value}
-            whenSelected={option.whenSelected}
-          >
-            {option.summary}
-          </RuleOptionHelp>
-        ))}
-      </div>
-    </>
+    <div className="form-group rule-entry-method">
+      <label className="form-label">Katılım hak tipi</label>
+      <RuleToggleGroup
+        value={entryMethod}
+        onChange={handleEntryMethodChange}
+        options={entryOptions}
+      />
+      {ENTRY_METHOD_OPTIONS.map((option) => (
+        <RuleOptionHelp key={option.value}>
+          {option.summary}
+        </RuleOptionHelp>
+      ))}
+    </div>
   );
 }

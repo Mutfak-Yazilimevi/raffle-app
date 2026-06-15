@@ -3,6 +3,7 @@ import { Award, Volume2, VolumeX, ChevronRight, RefreshCw, Trophy, Share2 } from
 import confetti from 'canvas-confetti';
 import { generateStartingStory } from '../utils/generateStartingStory';
 import { generateWinnerStory } from '../utils/generateWinnerStory';
+import { cryptoRandomInt } from '../utils/cryptoRandom';
 
 const SLOT_ITEM_HEIGHT = 48;
 const IDLE_NAME_COUNT = 24;
@@ -217,7 +218,7 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, storyBackg
     setIsSpinning(true);
     setWinnerTicket(null);
 
-    const randomIndex = Math.floor(Math.random() * drawingPool.length);
+    const randomIndex = cryptoRandomInt(drawingPool.length);
     const chosenTicket = drawingPool[randomIndex];
     chosenTicketRef.current = chosenTicket;
 
@@ -534,11 +535,11 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, storyBackg
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
         
         {/* Asil Listesi */}
-        <div className="glass-container" style={{ padding: '16px' }}>
-          <h4 style={{ fontSize: '14px', fontWeight: 700, borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px', marginBottom: '12px', color: 'var(--insta-pink)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div className="glass-container inset-box">
+          <h4 className="panel-heading" style={{ color: 'var(--insta-pink)' }}>
             🏆 Asil Kazananlar
           </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto' }}>
+          <div className="scroll-list">
             {activePrizes.map((prize, pIdx) => {
                const prizeWinners = drawnWinners.filter(w => w.prizeId === prize.id);
                return (
@@ -561,11 +562,11 @@ export default function RaffleAnimation({ ticketsPool, brand, prizes, storyBackg
         </div>
 
         {/* Yedek Listesi */}
-        <div className="glass-container" style={{ padding: '16px' }}>
-          <h4 style={{ fontSize: '14px', fontWeight: 700, borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px', marginBottom: '12px', color: 'var(--insta-orange)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div className="glass-container inset-box">
+          <h4 className="panel-heading" style={{ color: 'var(--insta-orange)' }}>
             ⏱️ Yedek Kazananlar
           </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto' }}>
+          <div className="scroll-list">
             {activePrizes.map((prize, pIdx) => {
                if (prize.substituteCount === 0) return null;
                const prizeSubs = drawnSubstitutes.filter(w => w.prizeId === prize.id);

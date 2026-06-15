@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   base: process.env.VITE_BASE_PATH || './',
   server: {
+    port: parseInt(process.env.PORT) || 5173,
     proxy: {
       '/proxy/instagram': {
         target: 'https://www.instagram.com',

@@ -12,13 +12,10 @@ export function RuleEffectBox({ children, title = 'Bu ayar kullanıldığında',
   );
 }
 
-export function FormFieldHelp({ children, whenActive, active = true }) {
+export function FormFieldHelp({ children }) {
   return (
     <span className="form-field-help">
       {children}
-      {whenActive && active && (
-        <span className="form-field-help__when">{whenActive}</span>
-      )}
     </span>
   );
 }
@@ -33,6 +30,7 @@ export function CriteriaCheckbox({
   highlighted = false,
   className = '',
 }) {
+  const hintText = [description, whenEnabled ? `Aktifken: ${whenEnabled}` : ''].filter(Boolean).join('\n\n');
   return (
     <div className={`rule-checkbox-block ${className}`.trim()}>
       <div className={`rule-checkbox-row${highlighted ? ' rule-checkbox-row--card' : ''}`}>
@@ -44,22 +42,22 @@ export function CriteriaCheckbox({
           className="rule-checkbox-input"
         />
         <label htmlFor={id} className="rule-checkbox-label">
-          <strong>{label}</strong>
-          {description && <span className="rule-checkbox-desc">{description}</span>}
+          <strong>
+            {label}
+            {hintText && (
+              <span className="rule-checkbox-hint" title={hintText} aria-label={description || hintText}>ⓘ</span>
+            )}
+          </strong>
         </label>
       </div>
-      {checked && whenEnabled && <RuleEffectBox flush={highlighted}>{whenEnabled}</RuleEffectBox>}
     </div>
   );
 }
 
-export function RuleOptionHelp({ children, whenSelected, selected = false }) {
+export function RuleOptionHelp({ children }) {
   return (
     <div className="rule-option-help-wrap">
       <p className="rule-help">{children}</p>
-      {whenSelected && selected && (
-        <RuleEffectBox title="Seçili modda">{whenSelected}</RuleEffectBox>
-      )}
     </div>
   );
 }
@@ -90,25 +88,24 @@ export function RuleBaselineCard({ children }) {
   );
 }
 
-export function RuleGroupPanel({ badge, title, intro, children, className = '' }) {
+export function RuleGroupPanel({ badge, title, children, className = '' }) {
   return (
     <div className={`rule-group-panel ${className}`.trim()}>
       <div className="rule-group-panel__header">
         {badge && <RuleVerificationBadge type={badge} />}
         {title && <h4 className="rule-group-panel__title">{title}</h4>}
       </div>
-      {intro && <p className="rule-section-intro">{intro}</p>}
       {children}
     </div>
   );
 }
 
-export function RuleSection({ title, intro, badge, first = false, children }) {
+export function RuleSection({ title, badge, first = false, children }) {
   if (badge || title) {
     return (
       <>
         {!first && <div className="rule-section-divider" />}
-        <RuleGroupPanel badge={badge} title={title} intro={intro}>
+        <RuleGroupPanel badge={badge} title={title}>
           {children}
         </RuleGroupPanel>
       </>
@@ -118,7 +115,6 @@ export function RuleSection({ title, intro, badge, first = false, children }) {
   return (
     <>
       {!first && <div className="rule-section-divider" />}
-      {intro && <p className="rule-section-intro">{intro}</p>}
       {children}
     </>
   );

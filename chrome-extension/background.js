@@ -87,11 +87,33 @@ async function waitForProfileReady(tabId, timeoutMs = PROFILE_READY_TIMEOUT_MS) 
   return Boolean(response?.ready);
 }
 
-async function createVerifyTab() {
+async function findExistingInstagramTabs() {
+  return new Promise((resolve) =>
+    chrome.tabs.query({ url: 'https://www.instagram.com/*' }, (tabs) =>
+      resolve(chrome.runtime.lastError ? [] : (tabs || []))
+    )
+  );
+}
+
+// Returns { tabId, owned } — owned=true means we created it and should close it after use.
+async function acquireVerifyTab(existingPool) {
+  const borrowed = existingPool.shift();
+  if (borrowed) {
+    return { tabId: borrowed.id, owned: false };
+  }
   const created = await chrome.tabs.create({ url: 'https://www.instagram.com/', active: false });
   await waitForTabComplete(created.id).catch(() => {});
   await sleep(120);
-  return created.id;
+  return { tabId: created.id, owned: true };
+}
+
+async function releaseVerifyTab({ tabId, owned }) {
+  if (owned) {
+    chrome.tabs.remove(tabId).catch(() => {});
+  } else {
+    // Navigate borrowed tab back to Instagram home so it's in a clean state
+    chrome.tabs.update(tabId, { url: 'https://www.instagram.com/' }).catch(() => {});
+  }
 }
 
 function saveProgress(progress) {
@@ -154,21 +176,21 @@ async function scanAccountFollowersOnTab(tabId, targetAccount, participants, req
   });
 }
 
-async function writeResultsToAppTab(appTabId, payload) {
+async function writeResultsToAppTab(appTabId, payload, resultsKey = 'raffle_follow_verify_results') {
   await chrome.scripting.executeScript({
     target: { tabId: appTabId },
-    func: (data) => {
+    func: (data, key) => {
       try {
-        localStorage.setItem('raffle_follow_verify_results', JSON.stringify(data));
+        localStorage.setItem(key, JSON.stringify(data));
         window.dispatchEvent(new StorageEvent('storage', {
-          key: 'raffle_follow_verify_results',
+          key,
           newValue: JSON.stringify(data),
         }));
       } catch (e) {
         console.error('Takip doğrulama sonuçları yazılamadı:', e);
       }
     },
-    args: [payload],
+    args: [payload, resultsKey],
   });
 }
 
@@ -180,7 +202,6 @@ async function runPerParticipantVerification({
   requestId,
 }) {
   const results = {};
-  const verifyTabIds = [];
   let nextIndex = 0;
   let completedCount = 0;
 
@@ -213,18 +234,20 @@ async function runPerParticipantVerification({
     }
   }
 
+  const verifyTabs = [];
   try {
+    const existingPool = await findExistingInstagramTabs();
     const workerCount = Math.min(VERIFY_CONCURRENCY, participants.length);
     for (let i = 0; i < workerCount; i += 1) {
-      verifyTabIds.push(await createVerifyTab());
+      verifyTabs.push(await acquireVerifyTab(existingPool));
     }
 
-    await Promise.all(verifyTabIds.map((tabId) => worker(tabId)));
+    await Promise.all(verifyTabs.map(({ tabId }) => worker(tabId)));
 
     return results;
   } finally {
-    for (const tabId of verifyTabIds) {
-      chrome.tabs.remove(tabId).catch(() => {});
+    for (const tab of verifyTabs) {
+      await releaseVerifyTab(tab);
     }
   }
 }
@@ -236,7 +259,7 @@ async function runBulkFollowVerification({
   requestId,
 }) {
   const matchMap = Object.fromEntries(participants.map((p) => [p, new Set()]));
-  const verifyTabIds = [];
+  const verifyTabs = [];
 
   saveProgress({
     requestId,
@@ -265,13 +288,14 @@ async function runBulkFollowVerification({
   }
 
   try {
+    const existingPool = await findExistingInstagramTabs();
     const workerCount = Math.min(BULK_ACCOUNT_CONCURRENCY, requiredFollowAccounts.length);
     for (let i = 0; i < workerCount; i += 1) {
-      verifyTabIds.push(await createVerifyTab());
+      verifyTabs.push(await acquireVerifyTab(existingPool));
     }
 
     let accountIndex = 0;
-    async function accountWorker(tabId) {
+    async function accountWorker({ tabId }) {
       while (accountIndex < requiredFollowAccounts.length) {
         const index = accountIndex;
         accountIndex += 1;
@@ -279,7 +303,7 @@ async function runBulkFollowVerification({
       }
     }
 
-    await Promise.all(verifyTabIds.map((tabId) => accountWorker(tabId)));
+    await Promise.all(verifyTabs.map(accountWorker));
 
     const results = {};
     for (const participant of participants) {
@@ -296,8 +320,8 @@ async function runBulkFollowVerification({
 
     return results;
   } finally {
-    for (const tabId of verifyTabIds) {
-      chrome.tabs.remove(tabId).catch(() => {});
+    for (const tab of verifyTabs) {
+      await releaseVerifyTab(tab);
     }
   }
 }
@@ -308,6 +332,7 @@ async function runFollowVerification({
   minRequiredFollows,
   appTabId,
   requestId,
+  resultsKey = 'raffle_follow_verify_results',
 }) {
   const uniqueParticipants = normalizeParticipants(participants);
   const requiredAccounts = normalizeAccounts(requiredFollowAccounts);
@@ -348,7 +373,7 @@ async function runFollowVerification({
   };
 
   if (appTabId) {
-    await writeResultsToAppTab(appTabId, payload);
+    await writeResultsToAppTab(appTabId, payload, resultsKey);
   }
 
   await chrome.storage.local.set({
@@ -454,7 +479,14 @@ async function fetchPostMetadata(url) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'START_FOLLOW_VERIFICATION') {
-    runFollowVerification(message)
+    runFollowVerification({ ...message, resultsKey: 'raffle_follow_verify_results' })
+      .then((payload) => sendResponse({ ok: true, payload }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+    return true;
+  }
+
+  if (message.type === 'START_LIKE_FOLLOW_VERIFICATION') {
+    runFollowVerification({ ...message, resultsKey: 'raffle_like_follow_verify_results' })
       .then((payload) => sendResponse({ ok: true, payload }))
       .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
     return true;

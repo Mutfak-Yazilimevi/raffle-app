@@ -133,6 +133,13 @@ export function getUniqueParticipantUsernames(comments) {
   ));
 }
 
+export function extractPostOwnerFromUrl(postUrl) {
+  if (!postUrl) return null;
+  // Matches: instagram.com/username/reel/... or instagram.com/username/p/...
+  const match = String(postUrl).match(/instagram\.com\/([^/?#]+)\/(?:reel|p|tv)\//i);
+  return match ? match[1].toLowerCase() : null;
+}
+
 export function parseCSV(csvText) {
   const lines = csvText.split('\n');
   if (lines.length < 2) return [];

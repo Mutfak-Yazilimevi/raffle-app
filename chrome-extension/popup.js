@@ -9,6 +9,7 @@ let scrapedComments = [];
 let popupPort = null;
 let appTabId = null;
 let followVerifyRunning = false;
+let likeFollowVerifyRunning = false;
 
 function connectPopupSession() {
   try {
@@ -99,10 +100,11 @@ function writeCommentsToAppTab(tabId, commentsData) {
       target: { tabId },
       func: (data) => {
         try {
-          localStorage.setItem('instagram_comments_import', JSON.stringify(data));
+          const payload = JSON.stringify(data);
+          localStorage.setItem('instagram_comments_import', payload);
           window.dispatchEvent(new StorageEvent('storage', {
             key: 'instagram_comments_import',
-            newValue: JSON.stringify(data),
+            newValue: payload,
           }));
           return true;
         } catch (e) {
@@ -121,11 +123,12 @@ function writeCommentsToAppTab(tabId, commentsData) {
   });
 }
 
-async function exportCommentsToApp(comments) {
+async function exportCommentsToApp(comments, likers = []) {
+  const payload = { comments, likers };
   let appTab = await findAppTab();
 
   if (appTab) {
-    await writeCommentsToAppTab(appTab.id, comments);
+    await writeCommentsToAppTab(appTab.id, payload);
     chrome.tabs.update(appTab.id, { active: true });
     return appTab.id;
   }
@@ -135,7 +138,7 @@ async function exportCommentsToApp(comments) {
       const onUpdated = (tabId, info) => {
         if (tabId !== newTab.id || info.status !== 'complete') return;
         chrome.tabs.onUpdated.removeListener(onUpdated);
-        writeCommentsToAppTab(newTab.id, comments).then(() => resolve(newTab.id));
+        writeCommentsToAppTab(newTab.id, payload).then(() => resolve(newTab.id));
       };
       chrome.tabs.onUpdated.addListener(onUpdated);
     });
@@ -216,6 +219,82 @@ async function setupFollowVerificationUI(elements) {
         followVerifyStatus.textContent = 'Tamamlandı — uygulamaya aktarıldı';
       }
       followVerifyStatus.className = 'status-value success';
+    });
+  };
+}
+
+async function setupLikeFollowVerificationUI(elements) {
+  const {
+    likeFollowSection,
+    likeFollowRuleSummary,
+    likeFollowVerifyStatus,
+    btnVerifyLikeFollows,
+  } = elements;
+
+  const appTab = await findAppTab();
+  if (!appTab) {
+    likeFollowSection.style.display = 'none';
+    return;
+  }
+
+  appTabId = appTab.id;
+  const data = await readAppLocalStorage(appTab.id, ['raffle_like_follow_verify_request']);
+  const request = data.raffle_like_follow_verify_request;
+
+  if (!request?.requiredFollowAccounts?.length || !request?.participants?.length) {
+    likeFollowSection.style.display = 'none';
+    return;
+  }
+
+  likeFollowSection.style.display = 'block';
+  const handles = request.requiredFollowAccounts.map((a) => `@${a}`).join(', ');
+  likeFollowRuleSummary.textContent = request.minRequiredFollows >= request.requiredFollowAccounts.length
+    ? `${handles} (tümü)`
+    : `${handles} (${request.minRequiredFollows}+)`;
+  likeFollowVerifyStatus.textContent = `${request.participants.length} beğeni bekliyor`;
+
+  btnVerifyLikeFollows.disabled = likeFollowVerifyRunning;
+  btnVerifyLikeFollows.onclick = async () => {
+    if (likeFollowVerifyRunning) return;
+
+    const latest = await readAppLocalStorage(appTab.id, ['raffle_like_follow_verify_request']);
+    const req = latest.raffle_like_follow_verify_request;
+    if (!req?.participants?.length) {
+      likeFollowVerifyStatus.textContent = 'Doğrulama isteği bulunamadı';
+      likeFollowVerifyStatus.className = 'status-value error';
+      return;
+    }
+
+    likeFollowVerifyRunning = true;
+    btnVerifyLikeFollows.disabled = true;
+    likeFollowVerifyStatus.textContent = 'Doğrulanıyor...';
+    likeFollowVerifyStatus.className = 'status-value';
+
+    chrome.runtime.sendMessage({
+      type: 'START_LIKE_FOLLOW_VERIFICATION',
+      requestId: req.requestId,
+      participants: req.participants,
+      requiredFollowAccounts: req.requiredFollowAccounts,
+      minRequiredFollows: req.minRequiredFollows,
+      appTabId: appTab.id,
+    }, (response) => {
+      likeFollowVerifyRunning = false;
+      btnVerifyLikeFollows.disabled = false;
+
+      if (!response?.ok) {
+        likeFollowVerifyStatus.textContent = response?.error || 'Doğrulama başarısız';
+        likeFollowVerifyStatus.className = 'status-value error';
+        return;
+      }
+
+      const passed = response.payload?.summary?.passed;
+      const total = response.payload?.summary?.total;
+      if (typeof passed === 'number' && typeof total === 'number') {
+        likeFollowVerifyStatus.textContent = `Tamamlandı — ${passed}/${total} beğeni takip şartını sağlıyor`;
+      } else {
+        likeFollowVerifyStatus.textContent = 'Tamamlandı — uygulamaya aktarıldı';
+      }
+      likeFollowVerifyStatus.className = 'status-value success';
     });
   };
 }
@@ -302,6 +381,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const followVerifyStatus = document.getElementById('follow-verify-status');
   const btnVerifyFollows = document.getElementById('btn-verify-follows');
 
+  const likeFollowSection = document.getElementById('like-follow-verify-section');
+  const likeFollowRuleSummary = document.getElementById('like-follow-rule-summary');
+  const likeFollowVerifyStatus = document.getElementById('like-follow-verify-status');
+  const btnVerifyLikeFollows = document.getElementById('btn-verify-like-follows');
+
   let zeroCommentHintTimer = null;
 
   function clearZeroCommentHintTimer() {
@@ -341,6 +425,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       followVerifyStatus,
       btnVerifyFollows,
     });
+    await setupLikeFollowVerificationUI({
+      likeFollowSection,
+      likeFollowRuleSummary,
+      likeFollowVerifyStatus,
+      btnVerifyLikeFollows,
+    });
     await setupPostImportSection();
     return;
   }
@@ -376,6 +466,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     followRuleSummary,
     followVerifyStatus,
     btnVerifyFollows,
+  });
+  await setupLikeFollowVerificationUI({
+    likeFollowSection,
+    likeFollowRuleSummary,
+    likeFollowVerifyStatus,
+    btnVerifyLikeFollows,
   });
 
   await setupPostImportSection(isInstagramPost ? tab.url : null);
@@ -493,12 +589,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!response?.comments?.length) return;
 
         scrapedComments = response.comments;
+        const scrapedLikers = response.likers || [];
         btnExport.disabled = true;
         btnExport.textContent = 'Aktarılıyor...';
 
         try {
-          await exportCommentsToApp(scrapedComments);
-          btnExport.textContent = 'Aktarıldı ✓';
+          await exportCommentsToApp(scrapedComments, scrapedLikers);
+          const likerNote = scrapedLikers.length > 0 ? ` · ${scrapedLikers.length} beğeni` : '';
+          btnExport.textContent = `Aktarıldı ✓ (${scrapedComments.length} yorum${likerNote})`;
         } catch (_) {
           btnExport.textContent = 'Çekilişe Gönder 🚀';
           btnExport.disabled = false;

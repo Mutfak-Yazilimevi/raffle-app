@@ -1,5 +1,7 @@
 export const FOLLOW_VERIFY_REQUEST_KEY = 'raffle_follow_verify_request';
 export const FOLLOW_VERIFY_RESULTS_KEY = 'raffle_follow_verify_results';
+export const LIKE_FOLLOW_VERIFY_REQUEST_KEY = 'raffle_like_follow_verify_request';
+export const LIKE_FOLLOW_VERIFY_RESULTS_KEY = 'raffle_like_follow_verify_results';
 
 export function parseFollowAccountList(input) {
   if (!input || typeof input !== 'string') return [];
@@ -65,11 +67,15 @@ export function normalizeFollowVerificationResults(payload) {
   Object.entries(entries).forEach(([username, data]) => {
     if (!data || typeof data !== 'object') return;
     const key = username.toLowerCase().replace(/^@+/, '');
+    // `verified` yalnızca eklenti açıkça ok:false ya da error set ettiyse false olur.
+    // ok alanı olmasa bile followed/missing alanlarından biri varsa doğrulama tamamlanmış sayılır.
+    const hasVerificationData = Array.isArray(data.followed) || Array.isArray(data.missing);
+    const verified = data.ok !== false && !data.error && hasVerificationData;
     map[key] = {
       followed: (data.followed || []).map((a) => a.toLowerCase()),
       missing: (data.missing || []).map((a) => a.toLowerCase()),
       meetsRequirement: Boolean(data.meetsRequirement),
-      verified: data.ok !== false,
+      verified,
       error: data.error || null,
       checkedVia: data.checkedVia || null,
       verifiedAt: payload.completedAt || data.verifiedAt || new Date().toISOString(),

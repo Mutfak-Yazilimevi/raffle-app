@@ -20,7 +20,7 @@ export const CRITERIA_COPY = {
     label: 'Gönderiyi beğenmek',
     description: 'Katılımcının çekiliş gönderisini beğenmesi beklenir.',
     whenEnabled:
-      'Duyuru ve story kurallarına eklenir. Kazanan seçildikten sonra doğrulama listesinde «Gönderiyi beğendi» maddesi çıkar; siz manuel kontrol edersiniz. Yorum havuzundan otomatik eleme yapılmaz.',
+      'Duyuru ve story kurallarına eklenir. Chrome eklentisiyle beğeni listesi aktarıldıysa yorum havuzundan otomatik eleme yapılır; aktarılmadıysa kazanan doğrulama listesinde «Gönderiyi beğendi» maddesi çıkar ve siz manuel kontrol edersiniz.',
   },
   requireSave: {
     label: 'Gönderiyi kaydetmek',
@@ -96,17 +96,17 @@ export const SECTION_COPY = {
   commentRules: {
     title: 'Yorum Kuralları',
     intro: COMMENT_RULES_INTRO,
-    badge: 'auto',
+    badge: null,
   },
   postInteraction: {
     title: 'Gönderi Etkileşimi',
     intro: 'Beğeni, kaydetme ve yorum gönderi üzerinde yapılır. İstediğiniz etkileşimleri işaretleyin; işaretlenmeyenler duyuruda zorunlu şart olarak yer almaz.',
-    badge: 'manual',
+    badge: null,
   },
   account: {
     title: 'Hesap Şartları',
     intro: 'Profil düzeyinde beklentiler. Takip şartı Chrome eklentisi ile doğrulanabilir.',
-    badge: 'extension',
+    badge: null,
   },
   multiEntry: {
     title: 'Çoklu Katılım',
@@ -116,12 +116,12 @@ export const SECTION_COPY = {
   story: {
     title: 'Hikâye Paylaşımı',
     intro: 'Katılımcının çekiliş gönderisini kendi Instagram hikâyesinde paylaşması beklentisi. Otomatik doğrulama yoktur.',
-    badge: 'manual',
+    badge: null,
   },
   legal: {
     title: 'Yasal ve Hesap Kriterleri',
     intro: 'Bilgilendirme ve kazanan sonrası manuel teyit içindir; yorum içe aktarımında otomatik filtre uygulanmaz.',
-    badge: 'manual',
+    badge: null,
   },
 };
 
