@@ -82,7 +82,13 @@
 
 ### ✅ BL-14 · Inline style → CSS class migrasyonu (kademeli) (2026-06-14)
 **Yapılan:** `src/index.css`'e yardımcı sınıflar eklendi: `.btn--sm`, `.flex-row`, `.flex-row--between`, `.flex-row--end`, `.flex-col`, `.stat-cell`, `.stat-label`, `.stat-value`, `.card-heading`, `.panel-heading`, `.inset-box`, `.scroll-list`, `.td-cell`, `.th-cell`. `RaffleAnimation.jsx`, `RaffleCommentsStep.jsx`, `RaffleConfigStep.jsx` içindeki yüksek tekrarlı inline style'lar bu sınıflarla değiştirildi.  
-**Kapsam notu:** Kalan dosyalar (RaffleResults, RaffleSetupWizard, App.jsx vb.) içindeki bağlamsal inline style'lar gerektiğinde kademeli olarak taşınabilir.
+**Kapsam notu (2026-06-15 güncellemesi):** `App.jsx` (header/footer/nav pill'leri, logo, aşama göstergesi) ve `RaffleResults.jsx` (sayfa kabuğu, marka başlığı, araç çubuğu, ödül çipleri, sonuç grid'i ve kolon başlıkları) için yapısal/tekrarlı inline style'lar CSS sınıflarına taşındı. Yan etki olarak `RaffleResults`'taki geçersiz `mdDirection`/`mdWidth` inline prop'ları kaldırıldı; responsive davranış `.results-toolbar` media query'sine devredildi. Kazanan/yedek kartlarındaki `isWinner`'a bağlı dinamik (bağlamsal) stiller bilinçli olarak inline bırakıldı.
+
+---
+
+### ✅ BL-18 · localStorage retention politikası (2026-06-15)
+**Yapılan:** `setupStorage.js` — kayıtlı çekiliş sayısı `MAX_RAFFLES` (50) sınırını aşınca en eski (aktif olmayan) çekilişler otomatik budanıyor. Saf, test edilebilir `selectRafflesToPrune(raffles, activeId, max)` fonksiyonu eklendi; `enforceRetentionPolicy` budanan çekilişlerin registry kaydını, localStorage setup state'ini ve IndexedDB görsellerini temizliyor. Politika `createRaffle` sırasında uygulanıyor. Görsel temizliği `deleteRaffleImages` yardımcısına çıkarılarak `deleteRaffle` ile paylaşıldı. `setupStorage.test.js` — 7 birim testi eklendi.  
+**Efor:** S · **Değer:** "localStorage dolması" riski (onboarding raporu) otomatik olarak sınırlanıyor; registry temizleme politikası tanımlandı.
 
 ### ✅ BL-15 · Versiyon senkronizasyonu (uygulama ↔ eklenti) (2026-06-14)
 **Yapılan:** `package.json` ve `manifest.json` arasında versiyon tutarsızlığı giderildi.
@@ -114,3 +120,4 @@
 | BL-15 | Versiyon senkronizasyonu | ✅ Tamamlandı | XS |
 | BL-16 | Scraper dayanıklılık izleme | ✅ Tamamlandı | M |
 | BL-17 | UI Yenileme — Night Market Light Tema | ✅ Tamamlandı | S |
+| BL-18 | localStorage retention politikası | ✅ Tamamlandı | S |

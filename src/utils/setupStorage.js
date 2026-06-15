@@ -7,6 +7,9 @@ const LEGACY_RESULTS_KEY = 'raffle_last_draw_results';
 const IMAGES_DB = 'raffle_setup_images';
 const IMAGES_STORE = 'images';
 
+// Retention: localStorage'ın dolmasını önlemek için kayıtlı çekiliş sayısını sınırla.
+export const MAX_RAFFLES = 50;
+
 let registryInitPromise = null;
 
 export function createRaffleId() {
@@ -56,6 +59,43 @@ function readRegistry() {
 
 function writeRegistry(registry) {
   return trySetLocalStorage(REGISTRY_KEY, JSON.stringify(registry));
+}
+
+/**
+ * En eski çekilişlerden hangilerinin budanacağını belirler.
+ * Aktif çekiliş asla budanmaz. Saf fonksiyon (storage'a dokunmaz) — test edilebilir.
+ *
+ * @returns {string[]} budanacak çekiliş id listesi (en eskiden yeniye)
+ */
+export function selectRafflesToPrune(raffles, activeId, maxRaffles = MAX_RAFFLES) {
+  if (!Array.isArray(raffles) || raffles.length <= maxRaffles) return [];
+  const excess = raffles.length - maxRaffles;
+  return raffles
+    .filter((r) => r.id !== activeId)
+    .sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt))
+    .slice(0, excess)
+    .map((r) => r.id);
+}
+
+/**
+ * Retention politikasını uygular: kayıt sayısı sınırı aşıyorsa en eski (aktif olmayan)
+ * çekilişleri registry'den, localStorage setup state'inden ve IndexedDB görsellerinden temizler.
+ * registry nesnesini yerinde günceller; budama yapıldıysa true döner.
+ */
+async function enforceRetentionPolicy(registry) {
+  const toPrune = selectRafflesToPrune(registry.raffles, registry.activeId);
+  if (toPrune.length === 0) return false;
+
+  const pruneSet = new Set(toPrune);
+  registry.raffles = registry.raffles.filter((r) => !pruneSet.has(r.id));
+
+  for (const id of toPrune) {
+    localStorage.removeItem(setupStorageKey(id));
+    await deleteRaffleImages(id).catch((error) => {
+      console.warn('Retention image cleanup failed:', error);
+    });
+  }
+  return true;
 }
 
 function buildSummaryFromState(state) {
@@ -189,6 +229,7 @@ export async function createRaffle() {
     drawResults: null,
   });
   registry.activeId = id;
+  await enforceRetentionPolicy(registry);
   writeRegistry(registry);
   return id;
 }
@@ -289,6 +330,25 @@ async function idbDelete(key) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IMAGES_STORE, 'readwrite');
     tx.objectStore(IMAGES_STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function deleteRaffleImages(raffleId) {
+  const db = await openImagesDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IMAGES_STORE, 'readwrite');
+    const store = tx.objectStore(IMAGES_STORE);
+    const prefix = `raffle:${raffleId}:`;
+    const req = store.getAllKeys();
+    req.onsuccess = () => {
+      for (const key of req.result) {
+        if (typeof key === 'string' && key.startsWith(prefix)) {
+          store.delete(key);
+        }
+      }
+    };
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -490,22 +550,7 @@ export async function deleteRaffle(raffleId) {
   localStorage.removeItem(setupStorageKey(raffleId));
 
   try {
-    const db = await openImagesDb();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(IMAGES_STORE, 'readwrite');
-      const store = tx.objectStore(IMAGES_STORE);
-      const prefix = `raffle:${raffleId}:`;
-      const req = store.getAllKeys();
-      req.onsuccess = () => {
-        for (const key of req.result) {
-          if (typeof key === 'string' && key.startsWith(prefix)) {
-            store.delete(key);
-          }
-        }
-      };
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+    await deleteRaffleImages(raffleId);
   } catch (error) {
     console.warn('Image cleanup on delete failed:', error);
   }

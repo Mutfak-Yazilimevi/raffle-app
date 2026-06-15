@@ -264,10 +264,10 @@ export default function RaffleResults({
   const prizeGroups = getPrizeGroups();
 
   return (
-    <div style={{ width: '100%', maxWidth: '960px', margin: '0 auto', padding: '20px' }}>
+    <div className="results-page">
 
       {hasBrand && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '24px', background: 'var(--bg-inset)', padding: '20px', borderRadius: '16px', border: '1px solid var(--glass-border)' }}>
+        <div className="results-brand">
           {brand.logo && (
             <img src={brand.logo} alt="Marka logosu" style={{ height: '60px', objectFit: 'contain', borderRadius: '10px' }} />
           )}
@@ -282,23 +282,23 @@ export default function RaffleResults({
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', mdDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: '20px', marginBottom: '24px' }}>
+      <div className="results-toolbar">
         <div>
-          <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '26px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h2 className="results-toolbar__title">
             🎉 Çekiliş Sonuçlandı!
           </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
+          <p className="results-toolbar__subtitle">
             Kazananları kontrol edebilir, yedekleri kaydırabilir veya sonucu görsel olarak indirebilirsiniz.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', width: '100%', mdWidth: 'auto', justifyContent: 'flex-end', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="results-actions">
           {onBackToAnnouncement && (
             <button type="button" className="btn btn-secondary" onClick={onBackToAnnouncement}>
               <ExternalLink size={16} /> İlan Sayfasına Dön
             </button>
           )}
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)', cursor: 'pointer', padding: '8px 12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'var(--bg-muted)' }}>
+          <label className="results-story-toggle">
             <input
               type="checkbox"
               checked={showPrizeProducts}
@@ -326,20 +326,9 @@ export default function RaffleResults({
       </div>
 
       {activePrizes.length > 0 && (
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px', justifyContent: 'center' }}>
+        <div className="results-prize-chips">
           {activePrizes.map((prize, idx) => (
-            <div
-              key={prize.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                background: 'var(--bg-inset)',
-                border: '1px solid var(--glass-border)',
-                borderRadius: '12px',
-                padding: '10px 14px'
-              }}
-            >
+            <div key={prize.id} className="results-prize-chip">
               {prize.image ? (
                 <img src={prize.image} alt={prize.name} style={{ width: '48px', height: '48px', objectFit: 'contain', borderRadius: '8px' }} />
               ) : (
@@ -371,14 +360,14 @@ export default function RaffleResults({
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+          <div className="results-grid">
             <div className="glass-container" style={{ padding: '24px' }}>
-              <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '16px', fontWeight: 800, color: 'var(--insta-pink)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
+              <h3 className="results-col-heading results-col-heading--winner">
                 <Trophy size={18} /> Asil Kazananlar
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {group.winners.length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '12px' }}>Asil kazanan yok.</p>
+                  <p className="results-empty-note">Asil kazanan yok.</p>
                 ) : (
                   group.winners
                     .sort((a, b) => a.stepIndex - b.stepIndex)
@@ -388,12 +377,12 @@ export default function RaffleResults({
             </div>
 
             <div className="glass-container" style={{ padding: '24px' }}>
-              <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '16px', fontWeight: 800, color: 'var(--insta-orange)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
+              <h3 className="results-col-heading results-col-heading--substitute">
                 ⏱️ Yedek Kazananlar
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {group.substitutes.length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '12px' }}>Yedek kazanan belirlenmedi.</p>
+                  <p className="results-empty-note">Yedek kazanan belirlenmedi.</p>
                 ) : (
                   group.substitutes
                     .sort((a, b) => a.stepIndex - b.stepIndex)

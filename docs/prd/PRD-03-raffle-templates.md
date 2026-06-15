@@ -1,6 +1,6 @@
 # PRD-03 — Çekiliş Şablonları
 
-> Durum: Taslak · 2026-06-13  
+> Durum: Tamamlandı · 2026-06-15  
 > Öncelik: P1 (Top 5 #3)
 
 ---

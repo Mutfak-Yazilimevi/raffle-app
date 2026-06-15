@@ -202,39 +202,18 @@ export default function App() {
     : savedDrawResults;
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <header
-        style={{
-          borderBottom: '1px solid var(--glass-border)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          background: 'var(--bg-header)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-          padding: '16px 24px',
-        }}
-      >
+    <div className="app-shell">
+      <header className="app-header">
         <div className="app-header-inner">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }} onClick={handleLogoClick}>
-            <div
-              style={{
-                background: 'var(--insta-gradient)',
-                padding: '8px',
-                borderRadius: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(225,48,108,0.2)',
-              }}
-            >
+          <div className="app-logo" onClick={handleLogoClick}>
+            <div className="app-logo-mark">
               <Award size={22} color="white" />
             </div>
             <div>
-              <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.3px', margin: 0 }}>
+              <h1 className="app-logo-title">
                 Mutfak<span className="gradient-text">RaffleStudio</span>
               </h1>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', fontWeight: 500, marginTop: '-2px' }}>
+              <span className="app-logo-tagline">
                 {APP_TAGLINE}
               </span>
             </div>
@@ -247,28 +226,16 @@ export default function App() {
           )}
 
           <div className="app-header-nav">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: 'var(--bg-inset)', padding: '6px 12px', borderRadius: '50px', border: '1px solid var(--glass-border)' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Aşama:</span>
-              <strong style={{ color: 'var(--text-main)' }}>{stageLabel}</strong>
+            <div className="stage-pill">
+              <span className="stage-pill__label">Aşama:</span>
+              <strong className="stage-pill__value">{stageLabel}</strong>
             </div>
 
             {view !== 'announcement' && (
               <button
                 type="button"
                 onClick={goToAnnouncement}
-                style={{
-                  fontSize: '12px',
-                  color: 'var(--insta-pink)',
-                  background: 'rgba(225, 48, 108, 0.08)',
-                  border: '1px solid rgba(225, 48, 108, 0.25)',
-                  borderRadius: '50px',
-                  padding: '6px 14px',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: 600,
-                }}
+                className="nav-pill nav-pill--pink"
               >
                 <Megaphone size={14} /> İlan Sayfası
               </button>
@@ -278,19 +245,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setView(view === 'extension' ? 'studio' : 'extension')}
-                style={{
-                  fontSize: '12px',
-                  color: view === 'extension' ? 'white' : 'var(--insta-blue)',
-                  background: view === 'extension' ? 'rgba(64, 93, 230, 0.25)' : 'rgba(64, 93, 230, 0.08)',
-                  border: '1px solid rgba(64, 93, 230, 0.35)',
-                  borderRadius: '50px',
-                  padding: '6px 14px',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: 600,
-                }}
+                className={`nav-pill nav-pill--blue${view === 'extension' ? ' is-active' : ''}`}
               >
                 <Puzzle size={14} /> Chrome Eklentisi
               </button>
@@ -300,19 +255,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleCreateRaffle}
-                style={{
-                  fontSize: '12px',
-                  color: 'var(--insta-yellow)',
-                  background: 'rgba(251, 173, 80, 0.08)',
-                  border: '1px solid rgba(251, 173, 80, 0.3)',
-                  borderRadius: '50px',
-                  padding: '6px 14px',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: 600,
-                }}
+                className="nav-pill nav-pill--yellow"
               >
                 <Puzzle size={14} /> Yeni Çekiliş
               </button>
@@ -322,7 +265,7 @@ export default function App() {
               href={LINKS.github}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ fontSize: '12px', color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+              className="nav-link"
             >
               <Compass size={14} /> GitHub
             </a>
@@ -390,7 +333,7 @@ export default function App() {
         )}
       </main>
 
-      <footer style={{ borderTop: '1px solid var(--glass-border)', padding: '20px 24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', background: 'var(--bg-footer)' }}>
+      <footer className="app-footer">
         <p>© 2026 {APP_DISPLAY_NAME} · Mutfak Yazılımevi. Tüm hakları saklıdır. Verileriniz tamamen yerel tarayıcınızda işlenir.</p>
       </footer>
     </div>
